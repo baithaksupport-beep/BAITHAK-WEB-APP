@@ -325,7 +325,7 @@ const LandingPage = ({ onGoogleSignUp }) => {
               {(() => {
                 const p1 = "Ek aisi ";
                 const p2 = "Baithak";
-                const p3 = " bhi zaroori hai mittar";
+                const p3 = " bhi zaroori hai mittar!";
 
                 const showP1 = typedCount > 0;
                 const showP2 = typedCount > p1.length;

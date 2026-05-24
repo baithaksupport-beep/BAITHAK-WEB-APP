@@ -1,26 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, UploadCloud, Search, CheckCircle2, Loader2, User, FileText, Sparkles, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, UploadCloud, CheckCircle2, Loader2, User, FileText, Sparkles, AlertCircle, Key, Settings, Camera, Check, Globe } from 'lucide-react';
 import Button from '../components/ui/Button';
-
-// Mock Student Database for Lookup Verification
-const VSSUT_STUDENTS = {
-  "2502100012": { name: "Soumya Patnaik", branch: "Metallurgical and Materials Engineering" },
-  "2502100010": { name: "Akshit Bindhani", branch: "Metallurgical and Materials Engineering" },
-  "2202090003": { name: "Sai Swarup Mohanty", branch: "Mechanical Engineering" },
-  "2202090004": { name: "Pragyan Paramita Jena", branch: "Electrical Engineering" }
-};
-
-const RANDOM_NAMES = [
-  "Soumya Patnaik", "Akshit Bindhani", "Siddharth Gudla", 
-  "", "Lipika Priyadarshini", "Ashutosh Tripathy",
-  "Siddharth Sekhar Panda", "Jyotirmayee Barik"
-];
-
-const RANDOM_BRANCHES = [
-  "Computer Science & Engineering", "Information Technology", 
-  "Electronics & TC Engineering", "Electrical Engineering", 
-  "Mechanical Engineering", "Civil Engineering"
-];
+import Modal from '../components/ui/Modal';
 
 // Predefined modern SVG gradient avatars
 const AVATARS = [
@@ -33,109 +14,239 @@ const AVATARS = [
 ];
 
 const RegistrationPage = ({ onBack }) => {
-  const [step, setStep] = useState(1); // 1: Verification, 2: Profile Customization, 3: Success
-  const [verifyMethod, setVerifyMethod] = useState('card'); // 'card' | 'number'
+  const [step, setStep] = useState(1); // 1: Card Upload & Scan, 2: Profile Customization, 3: Success
   
-  // Verification states
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
+  // Gemini API configuration states
+  const [showApiSettings, setShowApiSettings] = useState(false);
+  const [geminiApiKey, setGeminiApiKey] = useState(() => {
+    return localStorage.getItem('gemini_api_key') || import.meta.env.VITE_GEMINI_API_KEY || '';
+  });
+
+
+  // Upload/Scan states
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [regNumber, setRegNumber] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verifyError, setVerifyError] = useState('');
-  
-  // Student details fetched
-  const [studentDetails, setStudentDetails] = useState(null);
-  
-  // Profile settings
+  const [scanStatus, setScanStatus] = useState('');
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanError, setScanError] = useState('');
+
+  // Extracted details (editable after scan)
+  const [extractedDetails, setExtractedDetails] = useState({
+    name: '',
+    registrationNumber: '',
+    branch: '',
+    college: ''
+  });
+
+  // Profile setup states
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
+  const [customAvatarUrl, setCustomAvatarUrl] = useState(null);
   const [usernameError, setUsernameError] = useState('');
 
-  // Handle registration card file upload simulation
-  const handleFileUpload = (e) => {
+  // Warning Modal for Non-VSSUT college
+  const [showWarningModal, setShowWarningModal] = useState(false);
+
+  // File inputs refs
+  const idCardInputRef = useRef(null);
+  const avatarInputRef = useRef(null);
+
+  // Save API key locally
+  const handleSaveApiKey = (key) => {
+    setGeminiApiKey(key);
+    localStorage.setItem('gemini_api_key', key);
+    setShowApiSettings(false);
+  };
+
+  // Convert file to base64
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  // Handle college proof upload and trigger scan
+  const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsUploading(true);
-    setUploadProgress(0);
-    setVerifyError('');
+    setSelectedFile(file);
+    setScanError('');
+    
+    // Create image preview url
+    const objectUrl = URL.createObjectURL(file);
+    setFilePreview(objectUrl);
 
-    // Simulate upload progress
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          // Transition to OCR scanning state
-          setIsUploading(false);
-          setIsScanning(true);
-          
-          setTimeout(() => {
-            setIsScanning(false);
-            // Auto fetch mock student info
-            setStudentDetails({
-              name: "Sourav Kumar Pradhan",
-              branch: "Computer Science & Engineering"
-            });
-            setStep(2);
-          }, 1500); // 1.5s scan time
-          
-          return 100;
+    // Auto trigger scanning
+    triggerScan(file);
+  };
+
+  const triggerScan = async (file) => {
+    setIsScanning(true);
+    setScanProgress(10);
+    setScanStatus('Initializing Gemini AI scanner...');
+
+    // If an API Key is available, try the real Gemini scan!
+    if (geminiApiKey.trim()) {
+      try {
+        setScanProgress(30);
+        setScanStatus('Converting document to image payload...');
+        const base64Data = await fileToBase64(file);
+
+        setScanProgress(50);
+        setScanStatus('Analyzing credentials with Gemini 2.5 Flash...');
+        
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    {
+                      text: `You are an AI assistant verifying college registration cards or student IDs.
+Analyze this image and extract:
+1. Student's Full Name (e.g. Soumya Patnaik)
+2. Student's Registration / Roll / ID Number (e.g. 2202090001)
+3. Branch / Course / Department (e.g. Computer Science, Mechanical Engineering, Metallurgical and Materials Engineering, etc.)
+4. College / University Name (e.g. Veer Surendra Sai University of Technology, IIT Kharagpur, etc.)
+
+Respond strictly in this JSON format and nothing else. Do not wrap in markdown blocks, just raw JSON:
+{
+  "name": "...",
+  "registrationNumber": "...",
+  "branch": "...",
+  "college": "..."
+}`
+                    },
+                    {
+                      inlineData: {
+                        mimeType: file.type || 'image/jpeg',
+                        data: base64Data
+                      }
+                    }
+                  ]
+                }
+              ]
+            })
+          }
+        );
+
+        setScanProgress(80);
+        setScanStatus('Parsing Gemini extraction response...');
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status} ${response.statusText}`);
         }
-        return prev + 10;
-      });
-    }, 120);
-  };
 
-  // Handle registration number lookup verification
-  const handleLookupVerify = (e) => {
-    e.preventDefault();
-    if (!/^\d{10}$/.test(regNumber)) {
-      setVerifyError('Registration number must be exactly 10 digits.');
-      return;
-    }
+        const data = await response.json();
+        const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        
+        // Clean markdown syntax if Gemini wrapped it
+        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(cleanJson);
 
-    setVerifyError('');
-    setIsVerifying(true);
+        setExtractedDetails({
+          name: parsed.name || 'Unknown Candidate',
+          registrationNumber: parsed.registrationNumber || 'Unknown Reg No',
+          branch: parsed.branch || 'Unknown Branch',
+          college: parsed.college || 'Unknown College'
+        });
 
-    setTimeout(() => {
-      setIsVerifying(false);
-      
-      let fetchedDetails = VSSUT_STUDENTS[regNumber];
-      
-      // If not in predefined mock DB, generate a realistic student dynamically
-      if (!fetchedDetails) {
-        // Hash based on regNumber to keep it deterministic for the session
-        const nameIndex = parseInt(regNumber) % RANDOM_NAMES.length;
-        const branchIndex = parseInt(regNumber) % RANDOM_BRANCHES.length;
-        fetchedDetails = {
-          name: RANDOM_NAMES[nameIndex],
-          branch: RANDOM_BRANCHES[branchIndex]
-        };
+        setScanProgress(100);
+        setIsScanning(false);
+      } catch (err) {
+        console.error('Gemini Scan Failed:', err);
+        setScanError('Failed to parse ID card with Gemini API. Falling back to manual verification/demo.');
+        setIsScanning(false);
+        // Fallback to demo mode
+        runSimulatedScan(file);
       }
-      
-      setStudentDetails(fetchedDetails);
-    }, 1200);
+    } else {
+      // Fallback to simulated scan
+      runSimulatedScan(file);
+    }
   };
 
-  // Pre-fill display name once student details are fetched
+  const runSimulatedScan = (file) => {
+    setIsScanning(true);
+    let currentProgress = 10;
+    
+    const interval = setInterval(() => {
+      currentProgress += 15;
+      if (currentProgress >= 95) {
+        clearInterval(interval);
+        
+        setTimeout(() => {
+          setIsScanning(false);
+          setScanProgress(100);
+
+          const fileName = file?.name?.toLowerCase() || '';
+          const isVSSUT = fileName.includes('vssut') || fileName.includes('veer') || fileName.includes('sai') || fileName.includes('burla');
+
+          if (isVSSUT) {
+            setExtractedDetails({
+              name: 'Soumya Patnaik',
+              registrationNumber: '2202090001',
+              branch: 'Metallurgical and Materials Engineering',
+              college: 'Veer Surendra Sai University of Technology (VSSUT)'
+            });
+          } else {
+            setExtractedDetails({
+              name: 'Rohan Sharma',
+              registrationNumber: '22CS30045',
+              branch: 'Computer Science and Engineering',
+              college: 'Indian Institute of Technology, Kharagpur'
+            });
+          }
+        }, 800);
+      }
+
+      setScanProgress(Math.min(currentProgress, 95));
+      if (currentProgress < 40) {
+        setScanStatus('Simulating AI Scan: Initializing OCR...');
+      } else if (currentProgress < 70) {
+        setScanStatus('Simulating AI Scan: Detecting text nodes...');
+      } else {
+        setScanStatus('Simulating AI Scan: Extracting candidate data...');
+      }
+    }, 300);
+  };
+
+  // Pre-fill display name once details are ready
   useEffect(() => {
-    if (studentDetails) {
-      setDisplayName(studentDetails.name);
-      // Auto-suggest a username from their name (lowercase, no spaces, clean)
-      const cleanName = studentDetails.name
+    if (extractedDetails.name) {
+      setDisplayName(extractedDetails.name);
+      const cleanName = extractedDetails.name
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '_')
         .replace(/_+/g, '_')
         .replace(/^_+|_+$/g, '');
       setUsername(cleanName);
     }
-  }, [studentDetails]);
+  }, [extractedDetails]);
+
+  // Handle local avatar photo upload
+  const handleAvatarFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const objectUrl = URL.createObjectURL(file);
+    setCustomAvatarUrl(objectUrl);
+    setSelectedAvatar({ id: 99, grad: '', symbol: '👤', custom: true, url: objectUrl });
+  };
 
   // Validate Username input on change
   const handleUsernameChange = (val) => {
-    // Strip '@' if typed
     const cleanVal = val.startsWith('@') ? val.slice(1) : val;
     setUsername(cleanVal);
 
@@ -154,229 +265,273 @@ const RegistrationPage = ({ onBack }) => {
     }
   };
 
-  const handleProfileComplete = (e) => {
+  // Edit fields handler
+  const handleExtractedChange = (field, val) => {
+    setExtractedDetails(prev => ({
+      ...prev,
+      [field]: val
+    }));
+  };
+
+  // Handle Form Submission
+  const handleRegisterSubmit = (e) => {
     e.preventDefault();
-    if (usernameError || !username) {
-      return;
+    if (usernameError || !username) return;
+
+    // Check college name
+    const collegeLower = extractedDetails.college.toLowerCase();
+    const isVSSUT = collegeLower.includes('vssut') || 
+                    collegeLower.includes('veer surendra sai') || 
+                    collegeLower.includes('surendra sai university');
+
+    if (isVSSUT) {
+      setStep(3);
+    } else {
+      // Show Non-VSSUT College Modal/Warning
+      setShowWarningModal(true);
     }
-    setStep(3);
+  };
+
+  // Reset page states
+  const handleReset = () => {
+    setStep(1);
+    setSelectedFile(null);
+    setFilePreview(null);
+    setExtractedDetails({
+      name: '',
+      registrationNumber: '',
+      branch: '',
+      college: ''
+    });
+    setCustomAvatarUrl(null);
+    setSelectedAvatar(AVATARS[0]);
+    setUsername('');
+    setDisplayName('');
   };
 
   return (
     <div className="min-h-screen bg-bg-dark text-on-surface font-body hero-grid flex flex-col items-center justify-start py-12 px-6 selection:bg-accent-yellow selection:text-bg-dark">
-      {/* Back Button (Only for steps 1 and 2) */}
+      
+      {/* Back Button */}
       {step < 3 && (
         <button 
-          onClick={step === 2 ? () => { setStep(1); setStudentDetails(null); } : onBack}
+          onClick={step === 2 ? handleReset : onBack}
           className="fixed top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 text-xs font-semibold text-on-surface-variant hover:text-accent-yellow transition-colors cursor-pointer group z-50 bg-surface-dark/50 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 shadow-lg"
         >
-          <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform " />
+          <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
           <span>{step === 2 ? "Back" : "Back to Home"}</span>
         </button>
       )}
+
+      {/* Developer API Settings Button */}
+      {step === 1 && (
+        <button
+          onClick={() => setShowApiSettings(!showApiSettings)}
+          className="fixed top-6 right-6 md:top-8 md:right-8 flex items-center gap-2 text-xs font-semibold text-on-surface-variant hover:text-accent-yellow transition-colors cursor-pointer z-50 bg-surface-dark/50 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 shadow-lg"
+        >
+          <Settings size={14} />
+          <span>Gemini Settings</span>
+        </button>
+      )}
+
+      {/* API Key Modal Panel */}
+      {showApiSettings && (
+        <div className="fixed inset-0 z-[100] bg-bg-dark/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-sm glass-card p-6 rounded-2xl border border-white/10 relative">
            
-          
+          </div>
+        </div>
+      )}
 
-      {/* Main Glass Card Container */}
-      <div className="w-full max-w-md bg-[#0A1228]/85 border border-white/10 backdrop-blur-2xl rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.65)] overflow-hidden transition-all duration-500 mt-[50px] md:mt-30 hover:shadow-[0_25px_60px_rgba(255,186,9,0.35)]">
+      {/* Main Container */}
+      <div className="w-full max-w-md bg-[#0A1228]/85 border border-white/10 backdrop-blur-2xl rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.65)] overflow-hidden transition-all duration-500 mt-[50px] md:mt-24 hover:shadow-[0_25px_60px_rgba(255,186,9,0.25)]">
+        <div className="p-8 md:p-10">
 
-        <div className="p-8 md:p-10 ">
-          
-          {/* STEP 1: ENROLLMENT VERIFICATION */}
+          {/* STEP 1: UPLOAD & GEMINI SCAN */}
           {step === 1 && (
             <div className="space-y-6">
               <div className="text-left space-y-2">
-                <h1 className="text-xl md:text-xl font-heading font-bold text-on-surface">Verify your enrollment in Veer Surendra Sai University of Technology</h1>
+                <span className="text-[10px] font-bold text-accent-yellow uppercase tracking-widest bg-accent-yellow/10 border border-accent-yellow/20 px-3 py-1 rounded-full">
+                  Step 1 of 2
+                </span>
+                <h1 className="text-xl md:text-2xl font-heading font-bold text-on-surface pt-2">
+                  Verify Student Enrollment
+                </h1>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Baithak is exclusive to Veer Surendra Sai University of Technology students. Choose a method below to verify your enrollment.
+                  Upload your student ID card or academic registration receipt. Gemini AI will automatically extract your college credentials.
                 </p>
               </div>
 
-              {/* Method Switch Tabs */}
-              <div className="flex p-1 bg-bg-dark/60 rounded-xl border border-white/5">
-                <button
-                  type="button"
-                  onClick={() => { setVerifyMethod('card'); setVerifyError(''); }}
-                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                    verifyMethod === 'card'
-                      ? 'bg-accent-yellow text-bg-dark font-bold shadow-md shadow-accent-yellow/10'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  Registration Card
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setVerifyMethod('number'); setVerifyError(''); }}
-                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                    verifyMethod === 'number'
-                      ? 'bg-accent-yellow text-bg-dark font-bold shadow-md shadow-accent-yellow/10'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  Registration Number
-                </button>
-              </div>
 
-              {/* Option A: Registration Card Upload */}
-              {verifyMethod === 'card' && (
-                <div className="space-y-6 mt-6">
-                  {!isUploading && !isScanning ? (
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 hover:border-accent-yellow/40 bg-bg-dark/30 hover:bg-accent-yellow/5 rounded-2xl p-8 cursor-pointer transition-all duration-300 group">
-                      <div className="w-12 h-12 bg-white/5 group-hover:bg-accent-yellow/10 group-hover:text-accent-yellow border border-white/5 rounded-full flex items-center justify-center text-on-surface-variant transition-colors mb-4">
-                        <UploadCloud size={24} />
-                      </div>
-                      <span className="text-sm font-semibold text-on-surface mb-1">Upload Registration Card</span>
-                      <span className="text-[10px] text-on-surface-variant/70 text-center max-w-[240px]">
-                        Select or drag a photo/PDF of your VSSUT registration card.
-                      </span>
-                      <input 
-                        type="file" 
-                        accept="image/*,application/pdf" 
-                        className="hidden" 
-                        onChange={handleFileUpload}
-                      />
-                    </label>
-                  ) : isUploading ? (
-                    /* Mock Upload Progress State */
-                    <div className="border border-white/10 bg-bg-dark/30 rounded-2xl p-8 flex flex-col items-center justify-center space-y-4">
-                      <Loader2 className="animate-spin text-accent-yellow" size={28} />
-                      <div className="text-center">
-                        <p className="text-sm font-semibold text-on-surface">Uploading enrollment card...</p>
-                        <p className="text-[10px] text-on-surface-variant mt-1">{uploadProgress}% completed</p>
-                      </div>
-                      <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
-                        <div 
-                          className="bg-accent-yellow h-1.5 rounded-full transition-all duration-150" 
-                          style={{ width: `${uploadProgress}%` }}
-                        ></div>
-                      </div>
+              {/* Upload Section */}
+              {!selectedFile && (
+                <div className="space-y-4">
+                  <label 
+                    onClick={() => idCardInputRef.current?.click()}
+                    className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 hover:border-accent-yellow/40 bg-bg-dark/30 hover:bg-accent-yellow/5 rounded-2xl p-8 cursor-pointer transition-all duration-300 group"
+                  >
+                    <div className="w-12 h-12 bg-white/5 group-hover:bg-accent-yellow/10 group-hover:text-accent-yellow border border-white/5 rounded-full flex items-center justify-center text-on-surface-variant transition-colors mb-4">
+                      <UploadCloud size={24} />
                     </div>
-                  ) : (
-                    /* OCR Scanning Simulation State */
-                    <div className="border border-accent-yellow/20 bg-accent-yellow/5 rounded-2xl p-8 flex flex-col items-center justify-center space-y-4 animate-pulse">
-                      <FileText className="text-accent-yellow animate-bounce" size={28} />
-                      <div className="text-center">
-                        <p className="text-sm font-semibold text-accent-yellow">Scanning Registration Card...</p>
-                        <p className="text-[10px] text-on-surface-variant mt-1">Extracting candidate name & academic branch</p>
-                      </div>
-                    </div>
-                  )}
+                    <span className="text-sm font-semibold text-on-surface mb-1">
+                      Upload College Proof
+                    </span>
+                    <span className="text-[10px] text-on-surface-variant/70 text-center max-w-[240px]">
+                      Drop or select a JPEG/PNG image of your ID card or registration sheet.
+                    </span>
+                  </label>
+                  <input 
+                    ref={idCardInputRef}
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    onChange={handleFileChange}
+                  />
+                </div>
+              )}
 
-                  <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex items-start gap-3 text-left">
-                    <AlertCircle size={14} className="text-accent-yellow shrink-0 mt-0.5" />
-                    <p className="text-[10px] leading-relaxed text-on-surface-variant">
-                      OCR scanner automatically parses details from your card. Make sure the text on the registration card is clear and legible.
-                    </p>
+              {/* Scanning State */}
+              {selectedFile && isScanning && (
+                <div className="border border-accent-yellow/20 bg-accent-yellow/5 rounded-2xl p-8 flex flex-col items-center justify-center space-y-4 animate-fade-in relative overflow-hidden">
+                  
+                  {/* Laser Scan line animation */}
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-accent-yellow shadow-[0_0_12px_#FFBA09] animate-bounce w-full z-10" style={{ animationDuration: '3s' }}></div>
+                  
+                  <FileText className="text-accent-yellow animate-pulse" size={32} />
+                  
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-semibold text-accent-yellow">{scanStatus}</p>
+                    <p className="text-[10px] text-on-surface-variant">Analyzing image structures...</p>
+                  </div>
+
+                  <div className="w-full bg-white/5 rounded-full h-1 overflow-hidden">
+                    <div 
+                      className="bg-accent-yellow h-1 rounded-full transition-all duration-300"
+                      style={{ width: `${scanProgress}%` }}
+                    ></div>
                   </div>
                 </div>
               )}
 
-              {/* Option B: Registration Number Lookup */}
-              {verifyMethod === 'number' && (
-                <form onSubmit={handleLookupVerify} className="space-y-6 mt-6">
+              {/* Scan Error Message */}
+              {scanError && (
+                <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/15 rounded-xl px-4 py-3 flex gap-2 text-left items-center">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>{scanError}</span>
+                </div>
+              )}
+
+              {/* Results Preview (Once extracted) */}
+              {selectedFile && !isScanning && extractedDetails.name && (
+                <div className="space-y-4 animate-fade-in text-left">
+                  
+                  <div className="relative aspect-video w-full rounded-2xl border border-white/10 overflow-hidden bg-bg-dark/65 flex items-center justify-center mb-4">
+                    <img 
+                      src={filePreview} 
+                      alt="College Proof Preview" 
+                      className="w-full h-full object-contain opacity-60" 
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-bg-dark/90 via-transparent to-transparent"></div>
+                    <span className="absolute bottom-3 left-4 text-[10px] bg-accent-yellow/10 border border-accent-yellow/20 text-accent-yellow px-2 py-0.5 rounded font-mono font-semibold">
+                      Uploaded Proof Document
+                    </span>
+                  </div>
+
+                  <h3 className="text-xs font-bold text-accent-yellow uppercase tracking-wider">
+                    Extracted Card Metadata
+                  </h3>
+
                   <div className="space-y-3">
-                    <label className="text-[10px] font-bold text-accent-yellow uppercase tracking-wider block text-left">
-                      Enter your Registration Number
-                    </label>
-                    <div className="relative flex items-center">
+                    <div>
+                      <label className="text-[9px] text-on-surface-variant/60 font-bold uppercase">Full Name</label>
                       <input
                         type="text"
-                        maxLength={10}
-                        placeholder="e.g. 2202090001"
-                        value={regNumber}
-                        onChange={(e) => setRegNumber(e.target.value.replace(/\D/g, ''))}
-                        className="w-full bg-bg-dark/40 border border-white/10 focus:border-accent-yellow/40 rounded-xl py-3.5 px-4 text-sm outline-none transition-all placeholder:text-on-surface-variant/40"
-                        required
-                        disabled={isVerifying}
+                        value={extractedDetails.name}
+                        onChange={(e) => handleExtractedChange('name', e.target.value)}
+                        className="w-full bg-bg-dark/40 border border-white/10 focus:border-accent-yellow/40 rounded-xl py-2 px-3 text-xs outline-none transition-all text-on-surface"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[9px] text-on-surface-variant/60 font-bold uppercase">Registration No.</label>
+                        <input
+                          type="text"
+                          value={extractedDetails.registrationNumber}
+                          onChange={(e) => handleExtractedChange('registrationNumber', e.target.value)}
+                          className="w-full bg-bg-dark/40 border border-white/10 focus:border-accent-yellow/40 rounded-xl py-2 px-3 text-xs outline-none transition-all text-on-surface"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-on-surface-variant/60 font-bold uppercase">Academic Branch</label>
+                        <input
+                          type="text"
+                          value={extractedDetails.branch}
+                          onChange={(e) => handleExtractedChange('branch', e.target.value)}
+                          className="w-full bg-bg-dark/40 border border-white/10 focus:border-accent-yellow/40 rounded-xl py-2 px-3 text-xs outline-none transition-all text-on-surface"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[9px] text-on-surface-variant/60 font-bold uppercase">College / University</label>
+                      <input
+                        type="text"
+                        value={extractedDetails.college}
+                        onChange={(e) => handleExtractedChange('college', e.target.value)}
+                        className="w-full bg-bg-dark/40 border border-white/10 focus:border-accent-yellow/40 rounded-xl py-2 px-3 text-xs outline-none transition-all text-on-surface"
                       />
                     </div>
                   </div>
 
-                  {verifyError && (
-                    <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/10 rounded-xl px-4 py-3 flex gap-2 text-left items-center">
-                      <AlertCircle size={14} className="shrink-0" />
-                      <span>{verifyError}</span>
-                    </div>
-                  )}
-
-                  {!studentDetails ? (
+                  <div className="flex gap-3 pt-2">
                     <Button 
-                      type="submit" 
-                      variant="primary" 
-                      className="w-full py-3.5 text-xs font-bold cursor-pointer"
-                      disabled={isVerifying || regNumber.length !== 10}
+                      onClick={handleReset} 
+                      variant="glass" 
+                      className="flex-1 py-3 text-xs font-bold"
                     >
-                      {isVerifying ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <Loader2 className="animate-spin" size={14} /> Verifying registration number...
-                        </span>
-                      ) : (
-                        "Verify Enrollment"
-                      )}
+                      Reupload
                     </Button>
-                  ) : (
-                    /* Display Fetched Student Details */
-                    <div className="border border-emerald-500/20 bg-emerald-500/5 rounded-2xl p-5 text-left space-y-4 animate-fade-in">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
-                          <CheckCircle2 size={18} />
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Candidate Found</p>
-                          <p className="text-sm font-semibold text-on-surface mt-0.5">{studentDetails.name}</p>
-                        </div>
-                      </div>
-
-                      <div className="h-[1px] bg-white/5"></div>
-
-                      <div className="grid grid-cols-2 gap-4 text-xs">
-                        <div>
-                          <span className="text-[10px] text-on-surface-variant/50 uppercase font-bold">Branch</span>
-                          <p className="font-semibold text-on-surface-variant/90 mt-0.5">{studentDetails.branch}</p>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-on-surface-variant/50 uppercase font-bold">College</span>
-                          <p className="font-semibold text-on-surface-variant/90 mt-0.5">VSSUT, Burla</p>
-                        </div>
-                      </div>
-
-                      <Button 
-                        type="button"
-                        onClick={() => setStep(2)}
-                        variant="primary" 
-                        className="w-full py-3 text-xs font-bold cursor-pointer mt-2"
-                      >
-                        Proceed to Profile Setup
-                      </Button>
-                    </div>
-                  )}
-
-                  
-                </form>
+                    <Button 
+                      onClick={() => setStep(2)} 
+                      variant="primary" 
+                      className="flex-1 py-3 text-xs font-bold"
+                    >
+                      Confirm Details
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
           )}
 
-          {/* STEP 2: PROFILE CUSTOMIZATION */}
+          {/* STEP 2: PROFILE SETUP */}
           {step === 2 && (
-            <form onSubmit={handleProfileComplete} className="space-y-6">
+            <form onSubmit={handleRegisterSubmit} className="space-y-6">
               <div className="text-left space-y-2">
-                <h1 className="text-2xl md:text-3xl font-heading font-bold text-on-surface">Setup your Profile</h1>
+                <span className="text-[10px] font-bold text-accent-yellow uppercase tracking-widest bg-accent-yellow/10 border border-accent-yellow/20 px-3 py-1 rounded-full">
+                  Step 2 of 2
+                </span>
+                <h1 className="text-xl md:text-2xl font-heading font-bold text-on-surface pt-2">
+                  Create Campus Profile
+                </h1>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Customize your identity inside Baithak. Choose a unique username and an avatar representing you.
+                  Establish your unique identity on the platform. Other users will see your username and chosen avatar.
                 </p>
               </div>
 
-              {/* Readonly verified banner */}
+              {/* Verified Badge */}
               <div className="border border-white/5 bg-white/5 rounded-2xl p-4 flex items-center justify-between text-left">
-                <div>
-                  <p className="text-[9px] text-accent-yellow font-bold uppercase tracking-wider">Verified Identity</p>
-                  <p className="text-sm font-semibold text-on-surface mt-0.5">{studentDetails?.name}</p>
-                  <p className="text-[10px] text-on-surface-variant/80 mt-0.5">{studentDetails?.branch}</p>
+                <div className="space-y-0.5">
+                  <p className="text-[8px] text-accent-yellow font-bold uppercase tracking-wider flex items-center gap-1">
+                    <Globe size={10} /> Verified Enrollment
+                  </p>
+                  <p className="text-xs font-bold text-on-surface">{extractedDetails.name}</p>
+                  <p className="text-[10px] text-on-surface-variant/80">{extractedDetails.branch}</p>
+                  <p className="text-[9px] text-on-surface-variant/50 italic">{extractedDetails.college}</p>
                 </div>
-                <div className="w-9 h-9 rounded-full bg-accent-yellow/10 text-accent-yellow flex items-center justify-center shrink-0">
-                  <CheckCircle2 size={18} />
+                <div className="w-8 h-8 rounded-full bg-accent-yellow/10 text-accent-yellow flex items-center justify-center shrink-0">
+                  <CheckCircle2 size={16} />
                 </div>
               </div>
 
@@ -386,25 +541,25 @@ const RegistrationPage = ({ onBack }) => {
                   Username
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-on-surface-variant/60 font-semibold font-mono">@</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-on-surface-variant/50 font-semibold font-mono">@</span>
                   <input
                     type="text"
                     placeholder="username"
                     value={username}
                     onChange={(e) => handleUsernameChange(e.target.value)}
-                    className={`w-full bg-bg-dark/40 border focus:border-accent-yellow/40 rounded-xl px-4 py-3.5 pl-8 text-sm outline-none transition-all placeholder:text-on-surface-variant/40 ${
+                    className={`w-full bg-bg-dark/40 border focus:border-accent-yellow/40 rounded-xl px-4 py-3 pl-8 text-xs outline-none transition-all placeholder:text-on-surface-variant/30 ${
                       usernameError ? 'border-red-400' : username ? 'border-emerald-500/40' : 'border-white/10'
                     }`}
                     required
                   />
                   {username && !usernameError && (
-                    <CheckCircle2 size={16} className="text-emerald-400 absolute right-4 top-1/2 -translate-y-1/2" />
+                    <CheckCircle2 size={14} className="text-emerald-400 absolute right-4 top-1/2 -translate-y-1/2" />
                   )}
                 </div>
                 {usernameError ? (
                   <p className="text-[10px] text-red-400 mt-1">{usernameError}</p>
                 ) : (
-                  <p className="text-[9px] text-on-surface-variant/50 mt-1">This will be your unique campus handle.</p>
+                  <p className="text-[9px] text-on-surface-variant/50 mt-1">Only lowercase letters, numbers, and underscores are allowed.</p>
                 )}
               </div>
 
@@ -419,25 +574,60 @@ const RegistrationPage = ({ onBack }) => {
                     placeholder="e.g. Amit Patel"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full bg-bg-dark/40 border border-white/10 focus:border-accent-yellow/40 rounded-xl px-4 py-3.5 pl-10 text-sm outline-none transition-all placeholder:text-on-surface-variant/40"
+                    className="w-full bg-bg-dark/40 border border-white/10 focus:border-accent-yellow/40 rounded-xl px-4 py-3 pl-10 text-xs outline-none transition-all placeholder:text-on-surface-variant/30 text-on-surface"
                     required
                   />
-                  <User size={16} className="text-on-surface-variant/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <User size={14} className="text-on-surface-variant/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
-              {/* Avatar Selector */}
+              {/* Avatar Grid with Custom Photo Upload option */}
               <div className="space-y-3 text-left">
                 <label className="text-[10px] font-bold text-accent-yellow uppercase tracking-wider block">
-                  Select Campus Avatar
+                  Select Avatar
                 </label>
-                <div className="grid grid-cols-6 gap-3">
-                  {AVATARS.map((av) => (
+                <div className="grid grid-cols-4 gap-3">
+                  
+                  {/* Custom Avatar Upload Button */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => avatarInputRef.current?.click()}
+                      className={`relative aspect-square w-full rounded-full border-2 border-dashed bg-bg-dark/30 hover:bg-accent-yellow/5 flex flex-col items-center justify-center text-xs cursor-pointer transition-all duration-300 ${
+                        selectedAvatar.custom
+                          ? 'border-accent-yellow ring-4 ring-accent-yellow/20'
+                          : 'border-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      {customAvatarUrl ? (
+                        <img 
+                          src={customAvatarUrl} 
+                          alt="Custom Avatar" 
+                          className="w-full h-full rounded-full object-cover" 
+                        />
+                      ) : (
+                        <>
+                          <Camera size={16} className="text-on-surface-variant/70 mb-1" />
+                          <span className="text-[8px] text-on-surface-variant/80 font-bold text-center">Upload Photo</span>
+                        </>
+                      )}
+                    </button>
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleAvatarFileChange}
+                    />
+                  </div>
+
+                  {/* Preset Avatars */}
+                  {AVATARS.slice(0, 3).map((av) => (
                     <button
                       key={av.id}
                       type="button"
                       onClick={() => setSelectedAvatar(av)}
-                      className={`relative aspect-square rounded-full bg-gradient-to-tr ${av.grad} flex items-center justify-center text-lg md:text-xl shadow-lg border-2 cursor-pointer transition-all hover:scale-105 duration-200 ${
+                      className={`relative aspect-square rounded-full bg-gradient-to-tr ${av.grad} flex items-center justify-center text-lg shadow-lg border-2 cursor-pointer transition-all hover:scale-105 duration-200 ${
                         selectedAvatar.id === av.id
                           ? 'border-accent-yellow ring-4 ring-accent-yellow/20 scale-105'
                           : 'border-white/10 hover:border-white/20'
@@ -445,8 +635,8 @@ const RegistrationPage = ({ onBack }) => {
                     >
                       <span>{av.symbol}</span>
                       {selectedAvatar.id === av.id && (
-                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-accent-yellow text-bg-dark rounded-full flex items-center justify-center text-[9px] font-bold shadow-md">
-                          ✓
+                        <div className="absolute -bottom-1 -right-1 w-4.5 h-4.5 bg-accent-yellow text-bg-dark rounded-full flex items-center justify-center text-[9px] font-bold shadow-md">
+                          <Check size={10} />
                         </div>
                       )}
                     </button>
@@ -469,32 +659,38 @@ const RegistrationPage = ({ onBack }) => {
           {/* STEP 3: SUCCESS */}
           {step === 3 && (
             <div className="space-y-8 text-center py-6 animate-fade-in">
-              {/* Confetti simulation icon */}
               <div className="relative w-20 h-20 mx-auto">
-              
-                <div className="w-20 h-20 bg-green-500 border border-green-500 text-white rounded-full flex items-center justify-center  select-none ">
+                <div className="w-20 h-20 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/20">
                   <CheckCircle2 size={40} />
                 </div>
               </div>
 
               <div className="space-y-3">
-                <h1 className="text-3xl font-heading font-bold text-on-surface">Registration Completed!</h1>
-                <p className="text-sm text-accent-yellow font-bold font-mono">Welcome to the Circle, @{username}</p>
-                <p className="text-xs text-on-surface-variant leading-relaxed max-w-sm mx-auto">
-                  Your VSSUT community profile is verified. You have earned your starter bonus of <span className="text-accent-yellow font-bold">+100 Honour Points</span>.
+                <h1 className="text-2xl font-heading font-bold text-on-surface">Registration Completed!</h1>
+                <p className="text-xs text-accent-yellow font-bold font-mono">Welcome to the Circle, @{username}</p>
+                <p className="text-xs text-on-surface-variant leading-relaxed max-w-xs mx-auto">
+                  Your student community profile has been verified successfully. You have earned your starter bonus of <span className="text-accent-yellow font-bold">+100 Honour Points</span>.
                 </p>
               </div>
 
-              {/* Student Summary Card */}
+              {/* Profile Badge Preview */}
               <div className="border border-white/5 bg-white/5 rounded-2xl p-5 max-w-xs mx-auto flex items-center gap-4 text-left">
-                <div className={`w-12 h-12 rounded-full bg-gradient-to-tr ${selectedAvatar.grad} flex items-center justify-center text-xl shrink-0 shadow-md`}>
-                  <span>{selectedAvatar.symbol}</span>
-                </div>
+                {selectedAvatar.custom ? (
+                  <img 
+                    src={selectedAvatar.url} 
+                    alt="Verified Avatar" 
+                    className="w-12 h-12 rounded-full object-cover shrink-0 border border-white/10 shadow-md" 
+                  />
+                ) : (
+                  <div className={`w-12 h-12 rounded-full bg-gradient-to-tr ${selectedAvatar.grad} flex items-center justify-center text-xl shrink-0 shadow-md`}>
+                    <span>{selectedAvatar.symbol}</span>
+                  </div>
+                )}
                 <div>
                   <p className="text-xs font-semibold text-on-surface">{displayName}</p>
-                  <p className="text-[10px] text-on-surface-variant/80 mt-0.5">{studentDetails?.branch}</p>
+                  <p className="text-[10px] text-on-surface-variant/80 mt-0.5">{extractedDetails.branch}</p>
                   <span className="inline-block px-2 py-0.5 rounded-full bg-accent-yellow/10 border border-accent-yellow/20 text-accent-yellow text-[8px] font-bold uppercase mt-1">
-                    VSSUT Student
+                    {extractedDetails.college.toLowerCase().includes('vssut') ? 'VSSUT Student' : 'Campus Partner'}
                   </span>
                 </div>
               </div>
@@ -513,6 +709,49 @@ const RegistrationPage = ({ onBack }) => {
 
         </div>
       </div>
+
+      {/* Non-VSSUT College Modal Warning */}
+      <Modal
+        isOpen={showWarningModal}
+        onClose={() => setShowWarningModal(false)}
+        title="College Notice"
+      >
+        <div className="text-left space-y-5">
+          <div className="flex items-start gap-3 bg-accent-yellow/10 border border-accent-yellow/20 rounded-2xl p-4">
+            <AlertCircle className="text-accent-yellow shrink-0 mt-0.5" size={18} />
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-accent-yellow uppercase tracking-wider">Beta Phase Scaling Notice</p>
+              <p className="text-xs text-on-surface-variant leading-relaxed">
+                Since this is the testing version of Baithak, for now we are only scaling it in Veer Surendra Sai University of Technology. However, you will be able to comment and upvote to the discussions going on in your particular branch. We will be evolving our product to each and every college of India for which your assistance will be highly admirable. Kindly provide your college name below.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Button
+              onClick={() => {
+                window.open('https://forms.gle/mock-baithak-feedback', '_blank');
+              }}
+              variant="primary"
+              className="w-full py-3 text-xs font-bold text-center flex items-center justify-center gap-2"
+            >
+              Provide College Name (Google Form)
+            </Button>
+            
+            <Button
+              onClick={() => {
+                setShowWarningModal(false);
+                setStep(3); // Proceed to success & dashboard
+              }}
+              variant="glass"
+              className="w-full py-3 text-xs font-bold text-center border-white/10 hover:bg-white/5"
+            >
+              Continue to Dashboard
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
     </div>
   );
 };
