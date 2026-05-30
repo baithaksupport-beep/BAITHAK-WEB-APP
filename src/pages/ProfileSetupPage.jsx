@@ -1,5 +1,7 @@
-import React, { useState, useRef } from 'react';
-import { ArrowLeft, User, Camera, Check, AlertCircle, ArrowRight } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabaseClient';
+import { ArrowLeft, User, Camera, Check, AlertCircle, ArrowRight, Loader2, Sparkles } from 'lucide-react';
 import Button from '../components/ui/Button';
 
 // Predefined modern gradient avatars
@@ -12,14 +14,47 @@ const PRESET_AVATARS = [
   { id: 6, grad: "from-[#FF416C] to-[#FF4B2B]", symbol: "🔥", name: "Blaze" }
 ];
 
-const ProfileSetupPage = ({ onBack, profileData, setProfileData, onNext, isGoogleUser }) => {
-  const [username, setUsername] = useState(profileData.username || '');
-  const [displayName, setDisplayName] = useState(profileData.displayName || '');
-  const [selectedAvatar, setSelectedAvatar] = useState(profileData.selectedAvatar || PRESET_AVATARS[0]);
-  const [customAvatarUrl, setCustomAvatarUrl] = useState(profileData.customAvatarUrl || null);
-  
+const ProfileSetupPage = () => {
+  const { user, profile, signOut, refreshProfile } = useAuth();
+
+  const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [selectedAvatar, setSelectedAvatar] = useState(PRESET_AVATARS[0]);
+  const [customAvatarUrl, setCustomAvatarUrl] = useState(null);
+
+  // Status & Validation States
   const [usernameError, setUsernameError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [submitError, setSubmitError] = useState('');
+  
   const fileInputRef = useRef(null);
+
+  // Initialize fields once profile loads
+  useEffect(() => {
+    if (profile) {
+      if (profile.display_name) setDisplayName(profile.display_name);
+      if (profile.username) setUsername(profile.username);
+      
+      // If profile already had a custom avatar set
+      if (profile.avatar_url) {
+        if (profile.avatar_url.startsWith('http')) {
+          setCustomAvatarUrl(profile.avatar_url);
+          setSelectedAvatar({
+            id: 99,
+            grad: '',
+            symbol: '👤',
+            custom: true,
+            url: profile.avatar_url
+          });
+        } else {
+          const matched = PRESET_AVATARS.find(av => av.symbol === profile.avatar_url);
+          if (matched) setSelectedAvatar(matched);
+        }
+      }
+    }
+  }, [profile]);
 
   // Validate Username rules
   const validateUsername = (val) => {
@@ -53,77 +88,159 @@ const ProfileSetupPage = ({ onBack, profileData, setProfileData, onNext, isGoogl
     setUsernameError(errorMsg);
   };
 
-  // Handle custom photo upload
-  const handlePhotoUpload = (e) => {
+  // Secure Cloudflare R2 Upload Pipeline
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const objectUrl = URL.createObjectURL(file);
-    setCustomAvatarUrl(objectUrl);
-    
-    const customAvatar = {
-      id: 99,
-      grad: '',
-      symbol: '👤',
-      custom: true,
-      url: objectUrl
-    };
-    setSelectedAvatar(customAvatar);
+    // Strict validation: max 4MB, must be image
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Only image files are allowed.');
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setUploadError('Image size must be less than 4MB.');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError('');
+
+    try {
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5173' : 'https://baithak-web-app.vercel.app');
+      const fileExt = file.name.split('.').pop();
+      const uniqueFilename = `avatars/${user.id}-${Date.now()}.${fileExt}`;
+
+      // 1. Fetch pre-signed PUT URL from FastAPI backend
+      const presignedRes = await fetch(
+        `${apiBaseUrl}/api/v1/storage/presigned-url?filename=${encodeURIComponent(uniqueFilename)}&content_type=${encodeURIComponent(file.type)}`
+      );
+
+      if (!presignedRes.ok) {
+        throw new Error('Failed to retrieve secure presigned upload URL from backend.');
+      }
+
+      const { presigned_url, public_url } = await presignedRes.json();
+
+      // 2. Perform direct binary upload to Cloudflare R2 from browser
+      const uploadRes = await fetch(presigned_url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type
+        },
+        body: file
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error('Failed uploading asset binary to Cloudflare R2 storage bucket.');
+      }
+
+      // 3. Update frontend state
+      setCustomAvatarUrl(public_url);
+      setSelectedAvatar({
+        id: 99,
+        grad: '',
+        symbol: '👤',
+        custom: true,
+        url: public_url
+      });
+
+    } catch (err) {
+      console.error('R2 Pipeline Error:', err);
+      setUploadError(err.message || 'R2 Secure Upload Pipeline failed.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleAvatarSelect = (avatar) => {
     setSelectedAvatar(avatar);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitError('');
+    setIsSubmitting(true);
     
     const errorMsg = validateUsername(username);
     if (errorMsg || !username || !displayName) {
       if (errorMsg) setUsernameError(errorMsg);
+      setIsSubmitting(false);
       return;
     }
 
-    // Save states to parent
-    setProfileData({
-      username,
-      displayName,
-      selectedAvatar,
-      customAvatarUrl
-    });
+    try {
+      // 1. Verify Username Uniqueness
+      const { data: existingUser, error: checkError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', username)
+        .neq('id', user.id);
 
-    onNext(); // Navigate to Confirmation screen
+      if (checkError) throw checkError;
+
+      if (existingUser && existingUser.length > 0) {
+        setUsernameError('This username is already claimed by another user.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // 2. Save display name, username, R2 avatar, and complete onboarding
+      const avatarUrl = selectedAvatar.custom ? customAvatarUrl : selectedAvatar.symbol;
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          username,
+          display_name: displayName,
+          avatar_url: avatarUrl,
+          setup_completed: true
+        })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      // 3. Refresh profile state in Context (triggers router switch to /dashboard)
+      await refreshProfile();
+
+    } catch (err) {
+      console.error('Profile Onboarding Failed:', err);
+      setSubmitError(err.message || 'Failed saving onboarding profile details.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const isFormValid = 
     username.trim() !== '' && 
     displayName.trim() !== '' && 
-    usernameError === '';
+    usernameError === '' &&
+    !isUploading &&
+    !isSubmitting;
 
   return (
-    <div className="min-h-screen bg-bg-dark text-on-surface font-body flex flex-col items-center justify-center py-12 px-6">
-      
-      {/* Back Button */}
+    <div className="min-h-screen bg-bg-dark text-on-surface font-body flex flex-col items-center justify-center py-12 px-6 select-none relative">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-primary-navy/20 blur-[130px] rounded-full pointer-events-none"></div>
+
+      {/* Back Button (Triggers Safe Logout) */}
       <button 
-        onClick={onBack}
+        onClick={signOut}
         className="fixed top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 text-xs font-semibold text-on-surface-variant hover:text-accent-yellow transition-colors cursor-pointer group z-50 bg-surface-dark/60 border border-white/10 px-4 py-2 rounded-full shadow-lg"
       >
         <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
-        <span>{isGoogleUser ? 'Back to Home' : 'Back to Step 1'}</span>
+        <span>Cancel & Sign Out</span>
       </button>
 
       {/* Main Glassmorphic Form Card */}
-      <div className="w-full max-w-md bg-surface-dark border border-white/10 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.65)] hover:shadow-[0_25px_60px_rgba(255,186,9,0.1)] transition-all duration-500 overflow-hidden">
+      <div className="w-full max-w-md bg-surface-dark border border-white/10 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.65)] hover:shadow-[0_25px_60px_rgba(255,186,9,0.1)] transition-all duration-500 overflow-hidden z-10">
         <div className="p-8 md:p-10 space-y-8">
           
           {/* Header */}
           <div className="space-y-4 text-left">
-            {isGoogleUser && (
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-[12px] font-bold text-on-surface select-none shadow-md">
-                <img src="/google-logo.png" alt="Google" className="h-[14px] w-auto object-contain shrink-0" />
-                <span>Google Account Linked</span>
-              </div>
-            )}
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent-yellow/10 border border-accent-yellow/20 text-[11px] font-bold text-accent-yellow shadow-md uppercase tracking-wider">
+              <Sparkles size={11} className="animate-pulse" />
+              <span>Step 2 of 2: Onboarding</span>
+            </div>
             <h1 className="text-2xl md:text-3xl font-heading font-bold text-on-surface tracking-tight">
               Create Profile
             </h1>
@@ -131,6 +248,14 @@ const ProfileSetupPage = ({ onBack, profileData, setProfileData, onNext, isGoogl
               Choose your display identity and pick an avatar to represent you inside campus rooms.
             </p>
           </div>
+
+          {/* Errors */}
+          {submitError && (
+            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/15 rounded-xl px-4 py-3 flex gap-2 text-left items-center animate-fade-in">
+              <AlertCircle size={14} className="shrink-0" />
+              <span>{submitError}</span>
+            </div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -193,15 +318,21 @@ const ProfileSetupPage = ({ onBack, profileData, setProfileData, onNext, isGoogl
 
             {/* Avatar Selector Grid */}
             <div className="space-y-3.5 text-left">
-              <label className="text-[10px] font-bold text-accent-yellow uppercase tracking-widest block">
-                Select Avatar
-              </label>
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-bold text-accent-yellow uppercase tracking-widest block">
+                  Select Avatar
+                </label>
+                {uploadError && (
+                  <span className="text-[9px] text-red-400 font-medium animate-pulse">{uploadError}</span>
+                )}
+              </div>
 
               <div className="grid grid-cols-4 gap-3">
                 {/* Custom Photo Upload Button */}
                 <div className="relative group">
                   <button
                     type="button"
+                    disabled={isUploading}
                     onClick={() => fileInputRef.current?.click()}
                     className={`relative aspect-square w-full rounded-full border-2 border-dashed bg-bg-dark/40 hover:bg-accent-yellow/5 flex flex-col items-center justify-center transition-all duration-300 select-none cursor-pointer ${
                       selectedAvatar.custom
@@ -209,7 +340,9 @@ const ProfileSetupPage = ({ onBack, profileData, setProfileData, onNext, isGoogl
                         : 'border-white/10 hover:border-white/30'
                     }`}
                   >
-                    {customAvatarUrl ? (
+                    {isUploading ? (
+                      <Loader2 size={16} className="animate-spin text-accent-yellow" />
+                    ) : customAvatarUrl ? (
                       <img 
                         src={customAvatarUrl} 
                         alt="Upload Preview" 
@@ -229,7 +362,7 @@ const ProfileSetupPage = ({ onBack, profileData, setProfileData, onNext, isGoogl
                     className="hidden"
                     onChange={handlePhotoUpload}
                   />
-                  {selectedAvatar.custom && (
+                  {selectedAvatar.custom && !isUploading && (
                     <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-accent-yellow text-bg-dark rounded-full flex items-center justify-center text-[10px] font-extrabold shadow-md z-10 border border-bg-dark">
                       <Check size={11} className="stroke-[3]" />
                     </div>
@@ -262,15 +395,24 @@ const ProfileSetupPage = ({ onBack, profileData, setProfileData, onNext, isGoogl
               </div>
             </div>
 
-            {/* Next / Proceed Button */}
+            {/* Submit Onboarding Button */}
             <Button
               type="submit"
               variant="primary"
               disabled={!isFormValid}
-              className="w-full py-4 text-xs font-bold tracking-widest uppercase hover:shadow-[0_0_35px_rgba(255,186,9,0.3)] transition-all flex items-center justify-center gap-2 group"
+              className="w-full py-4 text-xs font-bold tracking-widest uppercase hover:shadow-[0_0_35px_rgba(255,186,9,0.3)] transition-all flex items-center justify-center gap-2 group cursor-pointer"
             >
-              <span>Next Step</span>
-              <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>Submitting profile...</span>
+                </>
+              ) : (
+                <>
+                  <span>Complete Setup</span>
+                  <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+                </>
+              )}
             </Button>
 
           </form>
