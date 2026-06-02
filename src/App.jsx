@@ -15,7 +15,6 @@ function App() {
   return (
     <Routes>
       {/* Public Landing & Login (Only accessible when NOT logged in) */}
-      <Route path="/test" element={<div style={{ padding: '50px', color: 'red', fontSize: '30px' }}>Router is Working!</div>} />
       <Route 
         path="/" 
         element={
