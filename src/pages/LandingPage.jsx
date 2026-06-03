@@ -422,8 +422,8 @@ const LandingPage = ({ onGoogleSignUp, onAboutClick, onTermsClick, onPrivacyClic
                 
                 {/* Sign In Button */}
                 <button
-                
-                  className="w-full bg-white   font-semibold py-3.5 px-6 rounded-full transition-all duration-300 cursor-pointer text-black font-sans flex items-center justify-center"
+                  onClick={onGoogleSignUp}
+                  className="w-full bg-white font-semibold py-3.5 px-6 rounded-full transition-all duration-300 cursor-pointer text-black font-sans flex items-center justify-center"
                 >
                   <img src="google-logo.png" alt="Google" className="w-auto h-5 inline mr-[5px]" />
                   Sign in with Google
