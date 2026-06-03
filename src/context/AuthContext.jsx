@@ -52,8 +52,14 @@ export const AuthProvider = ({ children }) => {
     let isMounted = true;
 
     // 1. Check active session on mount
-    supabase.auth.getSession().then(async ({ data: { session: initialSession } }) => {
+    supabase.auth.getSession().then(async ({ data: { session: initialSession }, error }) => {
       if (!isMounted) return;
+
+      if (error) {
+        console.error('Auth session error:', error.message);
+        setLoading(false);
+        return;
+      }
 
       if (initialSession) {
         setSession(initialSession);
@@ -61,7 +67,10 @@ export const AuthProvider = ({ children }) => {
         const profileData = await fetchProfile(initialSession.user.id);
         if (isMounted) setProfile(profileData);
       }
-      setLoading(false);
+      if (isMounted) setLoading(false);
+    }).catch((err) => {
+      console.error('Auth critical error:', err);
+      if (isMounted) setLoading(false);
     });
 
     // 2. Listen to Auth state changes
