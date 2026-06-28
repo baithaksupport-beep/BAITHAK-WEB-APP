@@ -2,28 +2,59 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { LogIn, MessageSquareCode, Coins, Menu, X } from 'lucide-react';
+import { MotionPathPlugin } from 'gsap/MotionPathPlugin';
+import { LogIn, MessageSquareCode, Coins, Menu, X, Plus, Minus } from 'lucide-react';
 import Button from '../components/ui/Button';
 import ProtectedRoute from '../components/ProtectedRoute';
 import { useAuth } from '../context/AuthContext';
 
 if (typeof window !== 'undefined') {
-  gsap.registerPlugin(ScrollTrigger);
+  gsap.registerPlugin(ScrollTrigger, MotionPathPlugin);
 }
+
+const FAQS = [
+  {
+    q: "Is Baithak only for my college?",
+    a: "Currently, Baithak is an exclusive platform. You must register with a verified college email address to access your campus's private circle."
+  },
+  {
+    q: "How do Honour Points work?",
+    a: "Every time you answer a question, share helpful notes, or get upvoted by peers, you earn Honour Points. Accumulating these points unlocks special profile badges, ranks, and real-world perks."
+  },
+  {
+    q: "Can I remain anonymous?",
+    a: "Yes! While you must verify your identity to join the platform, you can choose a custom Username and Avatar. Your real name and email are never shown publicly."
+  },
+  {
+    q: "Who can answer my questions?",
+    a: "Only verified students from your college (seniors, peers, and alumni) can answer. This ensures that every answer is highly contextual to your specific professors and campus culture."
+  },
+  {
+    q: "Is Baithak completely free to use?",
+    a: "Yes, Baithak is 100% free for all students. Our mission is to democratize campus knowledge and make it accessible without any paywalls."
+  },
+  {
+    q: "Can I install Baithak as an app on my phone?",
+    a: "Absolutely! Baithak is built as a Progressive Web App (PWA). Just open the website in Chrome or Safari on your phone, tap 'Share' or browser options, and select 'Add to Home Screen' to install it natively."
+  }
+];
 
 const LandingPageClient = () => {
   const router = useRouter();
   const { signInWithGoogle } = useAuth();
   
   const howItWorksRef = useRef(null);
+  const bgPathRef = useRef(null);
   const activePathRef = useRef(null);
   const walkerRef = useRef(null);
 
   const [typedCount, setTypedCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('');
+  const [openFaq, setOpenFaq] = useState(null);
 
   // Scroll Spy logic to highlight active section in navbar
   useEffect(() => {
@@ -39,7 +70,6 @@ const LandingPageClient = () => {
       sections.forEach(({ id, el }) => {
         if (el) {
           const rect = el.getBoundingClientRect();
-          // Element is active if it's near the top/middle of the viewport
           if (rect.top < window.innerHeight * 0.5 && rect.bottom > window.innerHeight * 0.2) {
             const distance = Math.abs(rect.top);
             if (distance < minDistance) {
@@ -54,8 +84,17 @@ const LandingPageClient = () => {
     };
 
     window.addEventListener('scroll', handleScroll);
-    handleScroll(); // Trigger initially
-    return () => window.removeEventListener('scroll', handleScroll);
+    handleScroll(); 
+    
+    // Ensure GSAP recalculates after initial render and image/video loads
+    const timer = setTimeout(() => {
+      ScrollTrigger.refresh();
+    }, 500);
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      clearTimeout(timer);
+    };
   }, []);
 
   // Typewriter effect for Hero Tagline
@@ -119,16 +158,19 @@ const LandingPageClient = () => {
     if (!activePath) return;
 
     // Set static starting position fallback so the walker is not cut off at (0, 0) initially or on mobile
-    gsap.set(walkerRef.current, {
-      x: 80,
-      y: 80,
-    });
+    if (walkerRef.current) {
+      walkerRef.current.setAttribute('transform', 'translate(80, 80)');
+    }
 
     const mm = gsap.matchMedia();
 
     mm.add("(min-width: 768px)", () => {
       // Guaranteed visible here on desktop viewport
-      const pathLength = activePath.getTotalLength();
+      const activePath = activePathRef.current;
+      const bgPath = bgPathRef.current;
+      if (!activePath || !bgPath) return;
+
+      const pathLength = bgPath.getTotalLength();
 
       // Set initial dasharray and offset so path starts invisible
       gsap.set(activePath, {
@@ -136,12 +178,18 @@ const LandingPageClient = () => {
         strokeDashoffset: pathLength,
       });
 
-      // Set initial position of walker at start of path dynamically
-      const startPoint = activePath.getPointAtLength(0);
-      gsap.set(walkerRef.current, {
-        x: startPoint.x || 80,
-        y: startPoint.y || 80,
-      });
+      // Set initial position of walker at start of path using MotionPathPlugin
+      if (walkerRef.current) {
+        gsap.set(walkerRef.current, {
+          motionPath: {
+            path: bgPath,
+            align: bgPath,
+            alignOrigin: [0.5, 0.5],
+            start: 0,
+            end: 0
+          }
+        });
+      }
 
       // Create scroll-linked timeline
       const scrollTl = gsap.timeline({
@@ -170,22 +218,15 @@ const LandingPageClient = () => {
         duration: 1,
       }, 0);
 
-      // Animate walker position along path
-      const walkerObj = { progress: 0 };
-      scrollTl.to(walkerObj, {
-        progress: 1,
+      // Animate walker position along path using MotionPathPlugin
+      scrollTl.to(walkerRef.current, {
+        motionPath: {
+          path: bgPath,
+          align: bgPath,
+          alignOrigin: [0.5, 0.5]
+        },
         ease: 'none',
         duration: 1,
-        onUpdate: () => {
-          const currentLength = walkerObj.progress * pathLength;
-          const point = activePath.getPointAtLength(currentLength);
-          if (walkerRef.current) {
-            gsap.set(walkerRef.current, {
-              x: point.x,
-              y: point.y,
-            });
-          }
-        },
       }, 0);
 
       // Dynamic node circles glow on-scroll
@@ -206,6 +247,9 @@ const LandingPageClient = () => {
   return (
     <ProtectedRoute type="public-only">
       <div className="min-h-screen bg-bg-dark text-on-surface font-body hero-grid selection:bg-accent-yellow selection:text-bg-dark">
+        {/* Subtle SVG Noise Grain */}
+        <div className="noise-overlay"></div>
+
         {/* Navigation */}
         {/* Desktop Navigation */}
         <nav className="hidden md:flex fixed top-6 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-4xl rounded-full border border-white/10 bg-surface-dark/60 backdrop-blur-xl z-[60] justify-between items-center px-8 py-3.5 shadow-2xl transition-all duration-300 h-[80px] w-100px">
@@ -235,12 +279,12 @@ const LandingPageClient = () => {
               How It Works
             </a>
 
-            <button
-              onClick={() => router.push('/about')}
+            <Link
+              href="/about"
               className="text-sm font-semibold px-4 py-1.5 rounded-full border border-transparent text-on-surface-variant hover:text-on-surface hover:border-accent-yellow/30 hover:bg-accent-yellow/5 transition-all duration-300 cursor-pointer bg-transparent"
             >
               About Us
-            </button>
+            </Link>
           </div>
           <div className="flex gap-3">
             <Button onClick={() => document.getElementById('join-section')?.scrollIntoView({ behavior: 'smooth' })} variant="primary" className="text-xs py-2 px-5 font-bold cursor-pointer">
@@ -313,15 +357,13 @@ const LandingPageClient = () => {
                   How It Works
                 </a>
 
-                <button 
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    router.push('/about');
-                  }}
-                  className="text-sm font-semibold px-4 py-2 rounded-full border border-transparent text-on-surface-variant hover:text-on-surface hover:border-accent-yellow/30 hover:bg-accent-yellow/5 transition-all duration-300 cursor-pointer bg-transparent text-left"
+                <Link 
+                  href="/about"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-sm font-semibold px-4 py-2 rounded-full border border-transparent text-on-surface-variant hover:text-on-surface hover:border-accent-yellow/30 hover:bg-accent-yellow/5 transition-all duration-300 cursor-pointer bg-transparent text-left block"
                 >
                   About Us
-                </button>
+                </Link>
               </nav>
             </div>
             
@@ -343,9 +385,9 @@ const LandingPageClient = () => {
 
         {/* Hero Section */}
         <section className="relative min-h-screen flex flex-col items-center justify-center pt-32 px-6 overflow-hidden">
-          {/* Glow Blobs */}
-          <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-primary-navy/20 blur-[130px] rounded-full pointer-events-none"></div>
-          <div className="absolute bottom-10 right-10 w-[300px] h-[300px] bg-accent-yellow/5 blur-[100px] rounded-full pointer-events-none"></div>
+          {/* Softer, more elliptical Glow Blobs */}
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[800px] h-[300px] bg-primary-navy/15 blur-[120px] rounded-[100%] pointer-events-none"></div>
+          <div className="absolute bottom-20 right-20 w-[400px] h-[200px] bg-accent-yellow/5 blur-[90px] rounded-[100%] pointer-events-none transform -rotate-12"></div>
           
           <div className="max-w-6xl w-full grid grid-cols-1 lg:grid-cols-12 gap-12 items-center z-10">
             <div className="lg:col-span-7 flex flex-col items-start text-left reveal-landing">
@@ -354,7 +396,7 @@ const LandingPageClient = () => {
               <br />
               <br />
    
-              <h1 className="font-heading text-4xl md:text-8xl lg:text-[90px] leading-[1.0] mb-6 tracking-tight text-on-surface">
+              <h1 className="font-heading text-4xl md:text-8xl lg:text-[90px] leading-[1.0] mb-6 tracking-tighter text-on-surface/95 drop-shadow-sm">
                 {(() => {
                   const p1 = "Ek aisi ";
                   const p2 = "Baithak";
@@ -405,13 +447,13 @@ const LandingPageClient = () => {
                 {/* Terms of Service text */}
                 <p className="text-[11px] text-on-surface-variant/60 leading-relaxed text-left">
                   By signing up, you agree to the{' '}
-                  <a onClick={() => router.push('/terms')} className="text-on-surface hover:text-accent-yellow underline transition-colors cursor-pointer">
+                  <Link href="/terms" className="text-on-surface hover:text-accent-yellow underline transition-colors cursor-pointer">
                     Terms of Service
-                  </a>{' '}
+                  </Link>{' '}
                   and{' '}
-                  <a onClick={() => router.push('/privacy')} className="text-on-surface hover:text-accent-yellow underline transition-colors cursor-pointer">
+                  <Link href="/privacy" className="text-on-surface hover:text-accent-yellow underline transition-colors cursor-pointer">
                     Privacy Policy
-                  </a>
+                  </Link>
                   , including. Requires verified college id.
                 </p>
 
@@ -431,6 +473,24 @@ const LandingPageClient = () => {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Dashboard Showcase Section */}
+        <section className="relative w-full py-16 px-6 max-w-7xl mx-auto flex flex-col items-center justify-center z-20">
+          <div className="w-full relative rounded-[2rem] md:rounded-[3rem] p-2 md:p-3 bg-gradient-to-b from-white/10 to-transparent shadow-[0_0_100px_rgba(255,186,9,0.1)] backdrop-blur-md reveal-landing border border-white/5">
+            <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-accent-yellow/50 to-transparent"></div>
+            <div className="w-full relative rounded-[1.5rem] md:rounded-[2.5rem] overflow-hidden border border-white/10 bg-surface-dark aspect-video flex items-center justify-center group shadow-2xl">
+              <video 
+                src="https://pub-da45e99017dca2252440c60f874d5ab8.r2.dev/landing-page-video/feature-tour.mp4" 
+                className="w-full h-full object-cover transition-transform duration-[3000ms] group-hover:scale-105" 
+                autoPlay 
+                loop 
+                muted 
+                playsInline 
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-bg-dark/80 via-transparent to-transparent pointer-events-none"></div>
             </div>
           </div>
         </section>
@@ -558,6 +618,7 @@ const LandingPageClient = () => {
 
                   {/* Background dashed SVG path */}
                   <path
+                    ref={bgPathRef}
                     d="M 80 80 C 300 80, 320 160, 320 250 C 320 340, 300 420, 80 420"
                     stroke="rgba(255, 186, 9, 0.15)"
                     strokeWidth="6"
@@ -601,7 +662,7 @@ const LandingPageClient = () => {
                   </g>
 
                   {/* The Walker */}
-                  <g ref={walkerRef} style={{ transformOrigin: 'center center' }}>
+                  <g ref={walkerRef}>
                     {/* Outer glow ring */}
                     <circle r="22" fill="url(#walker-glow)" opacity="0.6" className="animate-pulse" />
                     {/* Solid base */}
@@ -615,6 +676,52 @@ const LandingPageClient = () => {
           </div>
         </section>
 
+        {/* FAQ Section */}
+        <section id="faq" className="py-24 px-6 max-w-4xl mx-auto border-t border-white/5">
+          <div className="text-center mb-16 reveal-landing">
+            <h2 className="font-heading text-4xl md:text-5xl text-on-surface mb-4">
+              Frequently Asked <span className="text-accent-yellow italic font-normal text-glow">Questions</span>
+            </h2>
+            <p className="text-on-surface-variant text-sm">Everything you need to know about the platform.</p>
+          </div>
+
+          <div className="space-y-4 reveal-landing">
+            {FAQS.map((faq, index) => (
+              <div 
+                key={index} 
+                className={`border border-white/10 rounded-2xl overflow-hidden transition-all duration-300 ${
+                  openFaq === index ? 'bg-white/5 border-white/20 shadow-[0_0_30px_rgba(255,186,9,0.05)]' : 'bg-transparent hover:bg-white/5 hover:border-white/15'
+                }`}
+              >
+                <button
+                  onClick={() => {
+                    setOpenFaq(openFaq === index ? null : index);
+                    // Refresh ScrollTrigger slightly after animation to fix any layout shifts
+                    setTimeout(() => ScrollTrigger.refresh(), 350);
+                  }}
+                  className="w-full px-6 py-5 flex items-center justify-between text-left cursor-pointer"
+                >
+                  <span className={`font-semibold transition-colors duration-300 ${openFaq === index ? 'text-accent-yellow' : 'text-on-surface'}`}>
+                    {faq.q}
+                  </span>
+                  <div className={`shrink-0 ml-4 p-1 rounded-full transition-all duration-300 ${openFaq === index ? 'bg-accent-yellow/20 text-accent-yellow rotate-180' : 'bg-white/5 text-on-surface-variant'}`}>
+                    {openFaq === index ? <Minus size={16} /> : <Plus size={16} />}
+                  </div>
+                </button>
+                <div 
+                  className={`px-6 overflow-hidden transition-all duration-300 ease-in-out ${
+                    openFaq === index ? 'max-h-40 pb-5 opacity-100' : 'max-h-0 opacity-0'
+                  }`}
+                >
+                  <p className="text-sm text-on-surface-variant leading-relaxed">
+                    {faq.a}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* Footer */}
         <footer className="w-full py-12 px-6 border-t border-white/5 bg-surface-dark/20 text-center">
           <div className="max-w-4xl mx-auto flex flex-col items-center gap-6">
@@ -622,9 +729,9 @@ const LandingPageClient = () => {
               <img src="/logo.png" alt="Baithak Logo" className="w-auto h-40" />
             </div>
             <div className="flex flex-wrap gap-8 text-[11px] font-bold text-on-surface-variant/50 items-center justify-center">
-              <button onClick={() => router.push('/about')} className="hover:text-accent-yellow transition-colors cursor-pointer font-bold bg-transparent border-0">About Us</button>
-              <button onClick={() => router.push('/privacy')} className="hover:text-accent-yellow transition-colors cursor-pointer font-bold bg-transparent border-0">Privacy Policy</button>
-              <button onClick={() => router.push('/terms')}  className="hover:text-accent-yellow transition-colors cursor-pointer font-bold bg-transparent border-0">Terms of Service</button>
+              <Link href="/about" className="hover:text-accent-yellow transition-colors cursor-pointer font-bold bg-transparent border-0">About Us</Link>
+              <Link href="/privacy" className="hover:text-accent-yellow transition-colors cursor-pointer font-bold bg-transparent border-0">Privacy Policy</Link>
+              <Link href="/terms" className="hover:text-accent-yellow transition-colors cursor-pointer font-bold bg-transparent border-0">Terms of Service</Link>
               
               <a href="https://www.instagram.com/baithak.ig/" className="hover:text-accent-yellow transition-colors"> Instagram</a>
               <a href="#" className="hover:text-accent-yellow transition-colors"> Twitter / X</a>

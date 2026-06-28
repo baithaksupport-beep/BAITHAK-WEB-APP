@@ -30,9 +30,9 @@ export const AuthProvider = ({ children }) => {
 
       if (error) {
         if (error.code === 'PGRST116') {
-          // Profile row does not exist yet (waiting for trigger/sync)
-          console.warn('Profile not found for authenticated user. Auto-creating fallback row.');
-          return null;
+          // Profile row does not exist yet. Returning fallback onboarding state.
+          console.warn('Profile not found for authenticated user. Returning fallback onboarding state.');
+          return { id: userId, setup_completed: false };
         }
         throw error;
       }
@@ -53,38 +53,43 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Check active session on mount
-    supabase.auth.getSession().then(async ({ data: { session: initialSession } }) => {
-      if (!isMounted) return;
-
-      if (initialSession) {
-        setSession(initialSession);
-        setUser(initialSession.user);
-        const profileData = await fetchProfile(initialSession.user.id);
-        if (isMounted) setProfile(profileData);
+    // Safety fallback: if auth takes longer than 8 seconds, force stop loading
+    // This prevents users from getting permanently stuck on "Initializing Baithak..."
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted && loading) {
+        console.warn('Auth initialization timed out. Forcing load completion.');
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    }, 8000);
 
-    // 2. Listen to Auth state changes
+    // In Supabase v2, onAuthStateChange immediately fires an 'INITIAL_SESSION' event.
+    // By relying solely on this listener, we prevent race conditions with getSession() during React 18 StrictMode.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       if (!isMounted) return;
 
-      setLoading(true);
-      setSession(currentSession);
-      setUser(currentSession?.user || null);
+      try {
+        setSession(currentSession);
+        setUser(currentSession?.user || null);
 
-      if (currentSession?.user) {
-        const profileData = await fetchProfile(currentSession.user.id);
-        if (isMounted) setProfile(profileData);
-      } else {
-        if (isMounted) setProfile(null);
+        if (currentSession?.user) {
+          const profileData = await fetchProfile(currentSession.user.id);
+          if (isMounted) setProfile(profileData);
+        } else {
+          if (isMounted) setProfile(null);
+        }
+      } catch (err) {
+        console.error('Auth state change error:', err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+          clearTimeout(safetyTimeout);
+        }
       }
-      setLoading(false);
     });
 
     return () => {
       isMounted = false;
+      clearTimeout(safetyTimeout);
       subscription.unsubscribe();
     };
   }, []);
@@ -92,10 +97,12 @@ export const AuthProvider = ({ children }) => {
   const signInWithGoogle = async () => {
     try {
       setLoading(true);
+      const redirectUrl = window.location.origin;
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
+          redirectTo: redirectUrl
         }
       });
       if (error) throw error;

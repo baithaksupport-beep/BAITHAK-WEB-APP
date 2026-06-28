@@ -3,27 +3,95 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
-import { ArrowLeft, User, Camera, Check, AlertCircle, ArrowRight, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, User, Camera, Check, AlertCircle, ArrowRight, Loader2, Sparkles, UploadCloud } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import ProtectedRoute from '../../components/ProtectedRoute';
+import Image from 'next/image';
 
-// Predefined modern gradient avatars
-const PRESET_AVATARS = [
-  { id: 1, grad: "from-[#8A2387] via-[#E94057] to-[#F27121]", symbol: "💻", name: "Coder" },
-  { id: 2, grad: "from-[#11998e] to-[#38ef7d]", symbol: "🌱", name: "Gardener" },
-  { id: 3, grad: "from-[#FFB75E] to-[#ED8F03]", symbol: "⚡", name: "Spark" },
-  { id: 4, grad: "from-[#00F2FE] to-[#4FACFE]", symbol: "☄️", name: "Meteor" },
-  { id: 5, grad: "from-[#fc00ff] to-[#00dbde]", symbol: "🔮", name: "Mage" },
-  { id: 6, grad: "from-[#FF416C] to-[#FF4B2B]", symbol: "🔥", name: "Blaze" }
-];
+const PRESET_AVATARS = Array.from({ length: 24 }, (_, i) => 
+  `https://pub-da45e99017dca2252440c60f874d5ab8.r2.dev/avatars/preset/avatar${i + 1}.png`
+);
+
+const SwipeToSubmit = ({ isSubmitting, disabled, onSubmit }) => {
+  const [sliderPosition, setSliderPosition] = useState(0);
+  const sliderRef = useRef(null);
+  const containerRef = useRef(null);
+  const isDragging = useRef(false);
+
+  const handleStart = (clientX) => {
+    if (disabled || isSubmitting) return;
+    isDragging.current = true;
+  };
+
+  const handleMove = (clientX) => {
+    if (!isDragging.current || !containerRef.current || !sliderRef.current) return;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const sliderWidth = sliderRef.current.offsetWidth;
+    const maxScroll = containerRect.width - sliderWidth - 8;
+    let newX = clientX - containerRect.left - sliderWidth / 2;
+    newX = Math.max(0, Math.min(newX, maxScroll));
+    setSliderPosition(newX);
+  };
+
+  const handleEnd = () => {
+    if (!isDragging.current || !containerRef.current || !sliderRef.current) return;
+    isDragging.current = false;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const sliderWidth = sliderRef.current.offsetWidth;
+    const maxScroll = containerRect.width - sliderWidth - 8;
+    
+    if (sliderPosition > maxScroll * 0.8) {
+      setSliderPosition(maxScroll);
+      onSubmit();
+    } else {
+      setSliderPosition(0);
+    }
+  };
+
+  useEffect(() => {
+    if (!isSubmitting && sliderPosition > 0) {
+      setSliderPosition(0);
+    }
+  }, [isSubmitting]);
+
+  return (
+    <div 
+      ref={containerRef}
+      className={`relative w-full h-12 bg-bg-dark/80 rounded-xl border border-white/10 shadow-[inset_0_2px_4px_rgba(0,0,0,0.4)] overflow-hidden select-none flex md:hidden ${disabled ? 'opacity-50' : ''}`}
+    >
+      <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-on-surface-variant/70 uppercase tracking-widest z-0 pointer-events-none">
+        {isSubmitting ? (
+           <span className="flex items-center gap-2 text-accent-yellow"><Loader2 size={14} className="animate-spin" /> Submitting...</span>
+        ) : (
+           "Slide to complete"
+        )}
+      </div>
+      <div 
+        ref={sliderRef}
+        onTouchStart={(e) => handleStart(e.touches[0].clientX)}
+        onTouchMove={(e) => handleMove(e.touches[0].clientX)}
+        onTouchEnd={handleEnd}
+        onMouseDown={(e) => handleStart(e.clientX)}
+        onMouseMove={(e) => isDragging.current && handleMove(e.clientX)}
+        onMouseUp={handleEnd}
+        onMouseLeave={handleEnd}
+        style={{ transform: `translateX(${sliderPosition}px)` }}
+        className={`absolute top-1 left-1 bottom-1 w-12 bg-accent-yellow rounded-lg flex items-center justify-center z-10 ${disabled || isSubmitting ? 'cursor-not-allowed' : 'cursor-grab'} ${!isDragging.current ? 'transition-transform duration-300' : ''}`}
+      >
+        <ArrowRight size={16} className="text-bg-dark" />
+      </div>
+    </div>
+  );
+};
 
 const ProfileSetupPageClient = () => {
-  const { user, profile, signOut, refreshProfile } = useAuth();
+  const { user, session, profile, signOut, refreshProfile } = useAuth();
 
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState(PRESET_AVATARS[0]);
-  const [customAvatarUrl, setCustomAvatarUrl] = useState(null);
+  const [customAvatarUrl, setCustomAvatarUrl] = useState('');
+  const [localPreviewUrl, setLocalPreviewUrl] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
 
   // Status & Validation States
   const [usernameError, setUsernameError] = useState('');
@@ -42,19 +110,7 @@ const ProfileSetupPageClient = () => {
       
       // If profile already had a custom avatar set
       if (profile.avatar_url) {
-        if (profile.avatar_url.startsWith('http')) {
-          setCustomAvatarUrl(profile.avatar_url);
-          setSelectedAvatar({
-            id: 99,
-            grad: '',
-            symbol: '👤',
-            custom: true,
-            url: profile.avatar_url
-          });
-        } else {
-          const matched = PRESET_AVATARS.find(av => av.symbol === profile.avatar_url);
-          if (matched) setSelectedAvatar(matched);
-        }
+        setCustomAvatarUrl(profile.avatar_url);
       }
     }
   }, [profile]);
@@ -91,7 +147,7 @@ const ProfileSetupPageClient = () => {
     setUsernameError(errorMsg);
   };
 
-  // Secure Cloudflare R2 Upload Pipeline
+  // Just validate and hold the file locally
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -106,58 +162,14 @@ const ProfileSetupPageClient = () => {
       return;
     }
 
-    setIsUploading(true);
     setUploadError('');
+    setSelectedFile(file);
 
-    try {
-      const fileExt = file.name.split('.').pop();
-      const uniqueFilename = `avatars/${user.id}-${Date.now()}.${fileExt}`;
-
-      // 1. Fetch pre-signed PUT URL from Next.js API
-      const presignedRes = await fetch(
-        `/api/v1/storage/presigned-url?filename=${encodeURIComponent(uniqueFilename)}&content_type=${encodeURIComponent(file.type)}`
-      );
-
-      if (!presignedRes.ok) {
-        throw new Error('Failed to retrieve secure presigned upload URL from backend.');
-      }
-
-      const { presigned_url, public_url } = await presignedRes.json();
-
-      // 2. Perform direct binary upload to Cloudflare R2 from browser
-      const uploadRes = await fetch(presigned_url, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': file.type
-        },
-        body: file
-      });
-
-      if (!uploadRes.ok) {
-        throw new Error('Failed uploading asset binary to Cloudflare R2 storage bucket.');
-      }
-
-      // 3. Update frontend state
-      setCustomAvatarUrl(public_url);
-      setSelectedAvatar({
-        id: 99,
-        grad: '',
-        symbol: '👤',
-        custom: true,
-        url: public_url
-      });
-
-    } catch (err) {
-      console.error('R2 Pipeline Error:', err);
-      setUploadError(err.message || 'R2 Secure Upload Pipeline failed.');
-    } finally {
-      setIsUploading(false);
-    }
+    // Instantly show local preview
+    const objectUrl = URL.createObjectURL(file);
+    setLocalPreviewUrl(objectUrl);
   };
 
-  const handleAvatarSelect = (avatar) => {
-    setSelectedAvatar(avatar);
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -187,22 +199,49 @@ const ProfileSetupPageClient = () => {
         return;
       }
 
-      // 2. Save display name, username, R2 avatar, and complete onboarding
-      const avatarUrl = selectedAvatar.custom ? customAvatarUrl : selectedAvatar.symbol;
+      // 2. Upload to Cloudflare R2 if a new file is selected
+      let finalAvatarUrl = customAvatarUrl;
 
+      if (selectedFile) {
+        setIsUploading(true);
+        const fileExt = selectedFile.name.split('.').pop();
+        const uniqueFilename = `avatars/user_uploaded/${user.id}-${Date.now()}.${fileExt}`;
+
+        const presignedRes = await fetch(
+          `/api/v1/storage/presigned-url?filename=${encodeURIComponent(uniqueFilename)}&content_type=${encodeURIComponent(selectedFile.type)}`,
+          { headers: { 'Authorization': `Bearer ${session?.access_token || ''}` } }
+        );
+
+        if (!presignedRes.ok) throw new Error('Failed to retrieve secure presigned upload URL.');
+
+        const { presigned_url, public_url } = await presignedRes.json();
+
+        const uploadRes = await fetch(presigned_url, {
+          method: 'PUT',
+          headers: { 'Content-Type': selectedFile.type },
+          body: selectedFile
+        });
+
+        if (!uploadRes.ok) throw new Error('Failed uploading asset binary to Cloudflare R2.');
+        
+        finalAvatarUrl = public_url;
+      }
+
+      // 3. Save profile and complete onboarding
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: user.id,
           username,
           display_name: displayName,
-          avatar_url: avatarUrl,
+          avatar_url: finalAvatarUrl,
+          email: user.email,
           setup_completed: true
-        })
-        .eq('id', user.id);
+        });
 
       if (updateError) throw updateError;
 
-      // 3. Refresh profile state in Context (triggers router switch to /dashboard)
+      // 4. Refresh profile state in Context (triggers router switch to /dashboard)
       await refreshProfile();
 
     } catch (err) {
@@ -210,6 +249,7 @@ const ProfileSetupPageClient = () => {
       setSubmitError(err.message || 'Failed saving onboarding profile details.');
     } finally {
       setIsSubmitting(false);
+      setIsUploading(false);
     }
   };
 
@@ -222,204 +262,239 @@ const ProfileSetupPageClient = () => {
 
   return (
     <ProtectedRoute type="onboarding-only">
-      <div className="min-h-screen bg-bg-dark text-on-surface font-body flex flex-col items-center justify-center py-12 px-6 select-none relative">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-primary-navy/20 blur-[130px] rounded-full pointer-events-none"></div>
+      <div className="min-h-screen bg-bg-dark text-on-surface font-body flex flex-col items-center justify-center py-12 px-6 select-none relative overflow-hidden">
+        {/* Subtle SVG Noise Grain */}
+        <div className="noise-overlay"></div>
+
+        {/* Organic Glow Blobs */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[250px] bg-primary-navy/15 blur-[120px] rounded-[100%] pointer-events-none transform -rotate-6"></div>
+        <div className="absolute bottom-10 left-10 w-[300px] h-[200px] bg-accent-yellow/5 blur-[90px] rounded-[100%] pointer-events-none transform rotate-12"></div>
 
         {/* Back Button (Triggers Safe Logout) */}
         <button 
           onClick={signOut}
-          className="fixed top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 text-xs font-semibold text-on-surface-variant hover:text-accent-yellow transition-colors cursor-pointer group z-50 bg-surface-dark/60 border border-white/10 px-4 py-2 rounded-full shadow-lg"
+          className="fixed top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 text-xs font-semibold text-on-surface-variant hover:text-accent-yellow transition-colors cursor-pointer group z-50 premium-glass px-4 py-2 rounded-full shadow-lg"
         >
           <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
           <span>Cancel & Sign Out</span>
         </button>
 
         {/* Main Glassmorphic Form Card */}
-        <div className="w-full max-w-md bg-surface-dark border border-white/10 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.65)] hover:shadow-[0_25px_60px_rgba(255,186,9,0.1)] transition-all duration-500 overflow-hidden z-10 animate-fade-in">
-          <div className="p-8 md:p-10 space-y-8">
+        <div className="w-full max-w-4xl premium-glass rounded-[32px] hover:shadow-[0_25px_60px_rgba(255,186,9,0.08)] transition-all duration-500 overflow-hidden z-10 animate-fade-in relative mx-auto">
+          <div className="p-8 md:p-12 space-y-8 md:space-y-0 md:grid md:grid-cols-2 md:gap-12">
             
-            {/* Header */}
-            <div className="space-y-4 text-left">
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent-yellow/10 border border-accent-yellow/20 text-[11px] font-bold text-accent-yellow shadow-md uppercase tracking-wider">
-                <Sparkles size={11} className="animate-pulse" />
-                <span>Step 2 of 2: Onboarding</span>
+            {/* Left Column: Info & Text Inputs */}
+            <div className="flex flex-col space-y-8">
+              {/* Header */}
+              <div className="space-y-4 text-left">
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent-yellow/10 border border-accent-yellow/20 text-xs font-bold text-accent-yellow shadow-[inset_0_1px_0_rgba(255,186,9,0.3)] uppercase tracking-wider">
+                  <Sparkles size={12} className="animate-pulse" />
+                  <span>Step 2 of 2: Onboarding</span>
+                </div>
+                <h1 className="text-2xl md:text-4xl font-heading font-bold text-on-surface/95 tracking-tighter">
+                  Create Profile
+                </h1>
+                <p className="text-xs text-on-surface-variant/80 leading-relaxed max-w-sm">
+                  Choose your display identity and pick an avatar to represent you inside campus rooms.
+                </p>
               </div>
-              <h1 className="text-2xl md:text-3xl font-heading font-bold text-on-surface tracking-tight">
-                Create Profile
-              </h1>
-              <p className="text-xs text-on-surface-variant/80 leading-relaxed">
-                Choose your display identity and pick an avatar to represent you inside campus rooms.
-              </p>
-            </div>
 
-            {/* Errors */}
-            {submitError && (
-              <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/15 rounded-xl px-4 py-3 flex gap-2 text-left items-center animate-fade-in">
-                <AlertCircle size={14} className="shrink-0" />
-                <span>{submitError}</span>
-              </div>
-            )}
+              {/* Errors */}
+              {submitError && (
+                <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/15 rounded-xl px-4 py-3 flex gap-2 text-left items-center animate-fade-in">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{submitError}</span>
+                </div>
+              )}
 
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Text Form */}
+              <form id="profile-form" onSubmit={handleSubmit} className="space-y-6 flex-1">
               
-              {/* Display Name Input */}
-              <div className="space-y-2 text-left">
-                <label className="text-[10px] font-bold text-accent-yellow uppercase tracking-widest block">
-                  Display Name
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="e.g. Soumya Patnaik"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full bg-bg-dark border border-white/10 focus:border-accent-yellow focus:ring-1 focus:ring-accent-yellow/20 rounded-2xl px-5 py-4 pl-12 outline-none transition-all duration-300 text-xs font-body text-on-surface placeholder:text-on-surface-variant/35"
-                    required
-                  />
-                  <User size={15} className="text-on-surface-variant/40 absolute left-4.5 top-1/2 -translate-y-1/2" />
-                </div>
-              </div>
-
-              {/* Username Input */}
-              <div className="space-y-2 text-left">
-                <label className="text-[10px] font-bold text-accent-yellow uppercase tracking-widest block">
-                  Username
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4.5 top-1/2 -translate-y-1/2 text-xs text-on-surface-variant/40 font-mono font-bold">@</span>
-                  <input
-                    type="text"
-                    placeholder="username"
-                    value={username}
-                    onChange={handleUsernameChange}
-                    className={`w-full bg-bg-dark border focus:ring-1 rounded-2xl px-5 py-4 pl-9 outline-none transition-all duration-300 text-xs font-body text-on-surface placeholder:text-on-surface-variant/35 ${
-                      usernameError 
-                        ? 'border-red-400/80 focus:border-red-500 focus:ring-red-400/20' 
-                        : username && !usernameError 
-                          ? 'border-emerald-500/80 focus:border-emerald-500 focus:ring-emerald-500/20' 
-                          : 'border-white/10 focus:border-accent-yellow focus:ring-accent-yellow/20'
-                    }`}
-                    required
-                  />
-                  {username && !usernameError && (
-                    <Check className="text-emerald-400 absolute right-4.5 top-1/2 -translate-y-1/2 stroke-[2.5]" size={16} />
-                  )}
-                </div>
-                
-                {usernameError ? (
-                  <div className="flex items-center gap-1.5 text-[10px] text-red-400 font-semibold mt-1">
-                    <AlertCircle size={12} className="shrink-0" />
-                    <span>{usernameError}</span>
-                  </div>
-                ) : (
-                  <p className="text-[9px] text-on-surface-variant/50 font-medium leading-relaxed">
-                    Only lowercase letters, numbers, and underscores are allowed (3-15 characters).
-                  </p>
-                )}
-              </div>
-
-              {/* Avatar Selector Grid */}
-              <div className="space-y-3.5 text-left">
-                <div className="flex justify-between items-center">
-                  <label className="text-[10px] font-bold text-accent-yellow uppercase tracking-widest block">
-                    Select Avatar
+                {/* Display Name Input */}
+                <div className="space-y-2 text-left">
+                  <label className="text-xs font-bold text-accent-yellow uppercase tracking-widest block">
+                    Display Name
                   </label>
-                  {uploadError && (
-                    <span className="text-[9px] text-red-400 font-medium animate-pulse">{uploadError}</span>
-                  )}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="e.g. Soumya Patnaik"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      className="w-full bg-bg-dark/80 border border-white/5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.4)] focus:border-accent-yellow/50 focus:ring-2 focus:ring-accent-yellow/10 rounded-2xl px-5 py-4 md:py-4 pl-14 outline-none transition-all duration-300 text-xs md:text-sm font-body text-on-surface placeholder:text-on-surface-variant/35"
+                      required
+                    />
+                    <User size={16} className="text-on-surface-variant/40 absolute left-5 top-1/2 -translate-y-1/2" />
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-4 gap-3">
-                  {/* Custom Photo Upload Button */}
-                  <div className="relative group">
-                    <button
-                      type="button"
-                      disabled={isUploading}
-                      onClick={() => fileInputRef.current?.click()}
-                      className={`relative aspect-square w-full rounded-full border-2 border-dashed bg-bg-dark/40 hover:bg-accent-yellow/5 flex flex-col items-center justify-center transition-all duration-300 select-none cursor-pointer ${
-                        selectedAvatar.custom
-                          ? 'border-accent-yellow ring-4 ring-accent-yellow/20 scale-105'
-                          : 'border-white/10 hover:border-white/30'
-                      }`}
-                    >
-                      {isUploading ? (
-                        <Loader2 size={16} className="animate-spin text-accent-yellow" />
-                      ) : customAvatarUrl ? (
-                        <img 
-                          src={customAvatarUrl} 
-                          alt="Upload Preview" 
-                          className="w-full h-full rounded-full object-cover" 
-                        />
-                      ) : (
-                        <>
-                          <Camera size={16} className="text-on-surface-variant/60 group-hover:text-accent-yellow transition-colors mb-1" />
-                          <span className="text-[8px] text-on-surface-variant/80 group-hover:text-accent-yellow font-bold text-center leading-none">Photo</span>
-                        </>
-                      )}
-                    </button>
+                {/* Username Input */}
+                <div className="space-y-2 text-left">
+                  <label className="text-xs font-bold text-accent-yellow uppercase tracking-widest block">
+                    Username
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-5 top-1/2 -translate-y-1/2 text-xs md:text-sm text-on-surface-variant/40 font-mono font-bold">@</span>
                     <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handlePhotoUpload}
+                      type="text"
+                      placeholder="username"
+                      value={username}
+                      onChange={handleUsernameChange}
+                      className={`w-full bg-bg-dark/80 border shadow-[inset_0_2px_4px_rgba(0,0,0,0.4)] rounded-2xl px-5 py-4 md:py-4 pl-10 outline-none transition-all duration-300 text-xs md:text-sm font-body text-on-surface placeholder:text-on-surface-variant/35 ${
+                        usernameError 
+                          ? 'border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/10' 
+                          : username && !usernameError 
+                            ? 'border-emerald-500/50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10' 
+                            : 'border-white/5 focus:border-accent-yellow/50 focus:ring-2 focus:ring-accent-yellow/10'
+                      }`}
+                      required
                     />
-                    {selectedAvatar.custom && !isUploading && (
-                      <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-accent-yellow text-bg-dark rounded-full flex items-center justify-center text-[10px] font-extrabold shadow-md z-10 border border-bg-dark">
-                        <Check size={11} className="stroke-[3]" />
-                      </div>
+                    {username && !usernameError && (
+                      <Check className="text-emerald-400 absolute right-5 top-1/2 -translate-y-1/2 stroke-[2.5]" size={16} />
                     )}
                   </div>
+                  
+                  {usernameError ? (
+                    <div className="flex items-center gap-1.5 text-xs text-red-400 font-semibold mt-1">
+                      <AlertCircle size={14} className="shrink-0" />
+                      <span>{usernameError}</span>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-on-surface-variant/50 font-medium leading-relaxed">
+                      Only lowercase letters, numbers, and underscores are allowed (3-15 characters).
+                    </p>
+                  )}
+                </div>
+              </form>
+            </div>
 
-                  {/* Preset Gradient Buttons */}
-                  {PRESET_AVATARS.map((av) => {
-                    const isSelected = selectedAvatar.id === av.id;
-                    return (
-                      <button
-                        key={av.id}
-                        type="button"
-                        onClick={() => handleAvatarSelect(av)}
-                        className={`relative aspect-square rounded-full bg-gradient-to-tr ${av.grad} flex items-center justify-center text-xl shadow-lg border-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:brightness-110 active:scale-95 ${
-                          isSelected
-                            ? 'border-accent-yellow ring-4 ring-accent-yellow/20 scale-105'
-                            : 'border-white/10 hover:border-white/20'
-                        }`}
-                      >
-                        <span>{av.symbol}</span>
-                        {isSelected && (
-                          <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-accent-yellow text-bg-dark rounded-full flex items-center justify-center text-[10px] font-extrabold shadow-md z-10 border border-bg-dark">
-                            <Check size={11} className="stroke-[3]" />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
+            {/* Right Column: Avatar Selection */}
+            <div className="flex flex-col space-y-6 bg-white/[0.02] p-6 md:p-8 rounded-3xl border border-white/5">
+              
+              {/* Square Avatar Uploader */}
+              <div className="space-y-3 text-left">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-accent-yellow uppercase tracking-widest block">
+                    Profile Photo
+                  </label>
+                  {uploadError && (
+                    <span className="text-xs text-red-400 font-medium animate-pulse">{uploadError}</span>
+                  )}
+                </div>
+
+                <div className="relative group w-32 h-32 md:w-40 md:h-40">
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`relative w-full h-full rounded-[24px] border-2 border-dashed bg-bg-dark/60 shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] hover:bg-accent-yellow/5 flex flex-col items-center justify-center transition-all duration-300 select-none cursor-pointer overflow-hidden ${
+                      (customAvatarUrl || localPreviewUrl) && !PRESET_AVATARS.includes(customAvatarUrl)
+                        ? 'border-accent-yellow shadow-[0_0_30px_rgba(255,186,9,0.2)] scale-105'
+                        : 'border-white/10 hover:border-white/25'
+                    }`}
+                  >
+                    {localPreviewUrl || (customAvatarUrl && !PRESET_AVATARS.includes(customAvatarUrl)) ? (
+                      <>
+                        <Image 
+                          src={localPreviewUrl || customAvatarUrl} 
+                          alt="Upload Preview" 
+                          fill
+                          sizes="160px"
+                          className="object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
+                          <Camera size={24} className="text-white" />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center gap-3">
+                        <UploadCloud size={28} className="text-on-surface-variant/60 group-hover:text-accent-yellow transition-colors" />
+                        <span className="text-xs text-on-surface-variant/80 group-hover:text-accent-yellow font-bold text-center leading-none">Custom Photo</span>
+                      </div>
+                    )}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoUpload}
+                  />
+                  {(localPreviewUrl || (customAvatarUrl && !PRESET_AVATARS.includes(customAvatarUrl))) && (
+                    <div className="absolute -bottom-3 -right-3 w-8 h-8 bg-accent-yellow text-bg-dark rounded-full flex items-center justify-center text-sm font-extrabold shadow-xl z-10 border-[3px] border-bg-dark">
+                      <Check size={18} className="stroke-[3]" />
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Submit Onboarding Button */}
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={!isFormValid}
-                className="w-full py-4 text-xs font-bold tracking-widest uppercase hover:shadow-[0_0_35px_rgba(255,186,9,0.3)] transition-all flex items-center justify-center gap-2 group cursor-pointer"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    <span>Submitting profile...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Complete Setup</span>
-                    <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
-                  </>
-                )}
-              </Button>
+              {/* Preset Avatars Selection */}
+              <div className="pt-2 flex-1">
+                <p className="text-[11px] text-on-surface-variant/70 uppercase tracking-wider font-bold mb-4">Or choose a preset</p>
+                <div className="grid grid-cols-4 gap-4 md:gap-5 place-items-center max-w-sm mx-auto md:mx-0">
+                  {PRESET_AVATARS.map((url, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setLocalPreviewUrl('');
+                        setSelectedFile(null);
+                        setCustomAvatarUrl(url);
+                      }}
+                      className={`relative w-12 h-12 md:w-14 md:h-14 rounded-2xl border-2 transition-all duration-300 overflow-hidden hover:scale-110 cursor-pointer shadow-md ${
+                        customAvatarUrl === url && !localPreviewUrl
+                          ? 'border-accent-yellow shadow-[0_0_20px_rgba(255,186,9,0.3)] scale-110 z-10'
+                          : 'border-transparent hover:border-white/20'
+                      }`}
+                    >
+                      <Image src={url} alt={`Preset ${idx + 1}`} fill sizes="56px" className="object-cover" />
+                      {customAvatarUrl === url && !localPreviewUrl && (
+                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center backdrop-blur-[1px]">
+                          <Check size={18} className="text-accent-yellow stroke-[4]" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Action Footer */}
+          <div className="p-6 md:p-8 border-t border-white/10 bg-black/20 flex flex-col md:justify-end items-center md:items-end w-full">
+            {/* Desktop Button (Hidden on Mobile) */}
+            <Button
+              form="profile-form"
+              type="submit"
+              variant="primary"
+              disabled={!isFormValid}
+              className="hidden md:flex w-full md:w-auto px-8 py-3.5 text-xs md:text-sm font-bold tracking-widest uppercase hover:shadow-[0_0_30px_rgba(255,186,9,0.3)] transition-all items-center justify-center gap-2 group cursor-pointer rounded-xl"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Submitting...</span>
+                </>
+              ) : (
+                <>
+                  <span>Complete Setup</span>
+                  <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
+            </Button>
 
-            </form>
-
+            {/* Mobile Swipe to Submit (Hidden on Desktop) */}
+            <SwipeToSubmit 
+              isSubmitting={isSubmitting} 
+              disabled={!isFormValid} 
+              onSubmit={() => {
+                // Manually trigger the form submission via event since we are not a standard submit button
+                const form = document.getElementById('profile-form');
+                if (form) {
+                  form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                }
+              }} 
+            />
           </div>
         </div>
 

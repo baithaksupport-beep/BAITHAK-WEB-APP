@@ -4,6 +4,7 @@ import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { LogOut, Award, MessageSquare, ShieldCheck, ChevronRight, Hash, Sparkles } from 'lucide-react';
 import ProtectedRoute from '../../components/ProtectedRoute';
+import Image from 'next/image';
 
 const DashboardPageClient = () => {
   const { user, profile, signOut } = useAuth();
@@ -53,11 +54,16 @@ const DashboardPageClient = () => {
               <div className="flex flex-col items-center text-center space-y-4 pt-2">
                 {/* Profile Picture */}
                 {profile?.avatar_url?.startsWith('http') ? (
-                  <img 
-                    src={profile.avatar_url} 
-                    alt={profile.display_name} 
-                    className="w-20 h-20 rounded-full object-cover border-2 border-accent-yellow shadow-md"
-                  />
+                  <div className="relative w-20 h-20 rounded-full border-2 border-accent-yellow shadow-md overflow-hidden">
+                    <Image 
+                      src={profile.avatar_url} 
+                      alt={profile.display_name || 'User'} 
+                      fill
+                      sizes="80px"
+                      className="object-cover"
+                      unoptimized={true}
+                    />
+                  </div>
                 ) : (
                   <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-[#8A2387] via-[#E94057] to-[#F27121] flex items-center justify-center text-4xl shadow-md border-2 border-white/10">
                     <span>{profile?.avatar_url || '👤'}</span>

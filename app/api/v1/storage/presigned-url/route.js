@@ -1,5 +1,6 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { createClient } from "@supabase/supabase-js";
 
 // Cloudflare R2 Credentials validation
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -28,6 +29,36 @@ if (accountId && accessKeyId && secretAccessKey) {
 }
 
 export async function GET(request) {
+  // 1. Authenticate request using Supabase access token
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return Response.json(
+      { error: "Unauthorized: Missing authorization bearer token." },
+      { status: 401 }
+    );
+  }
+
+  const token = authHeader.split(" ")[1];
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return Response.json(
+      { error: "Internal Server Error: Supabase server environment configuration is missing." },
+      { status: 500 }
+    );
+  }
+
+  const supabaseServerClient = createClient(supabaseUrl, supabaseAnonKey);
+  const { data: { user }, error: authError } = await supabaseServerClient.auth.getUser(token);
+
+  if (authError || !user) {
+    return Response.json(
+      { error: `Unauthorized: ${authError?.message || "Invalid or expired session token."}` },
+      { status: 401 }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const filename = searchParams.get("filename");
   const contentType = searchParams.get("content_type");
@@ -43,6 +74,21 @@ export async function GET(request) {
     return Response.json(
       { error: "Missing required query parameters: filename or content_type" },
       { status: 400 }
+    );
+  }
+
+  if (!contentType.startsWith("image/")) {
+    return Response.json(
+      { error: "Forbidden: Only image files are allowed." },
+      { status: 403 }
+    );
+  }
+
+  const expectedPrefix = `avatars/user_uploaded/${user.id}-`;
+  if (!filename.startsWith(expectedPrefix)) {
+    return Response.json(
+      { error: "Forbidden: You can only upload files to your own avatar directory." },
+      { status: 403 }
     );
   }
 

@@ -1,6 +1,8 @@
 import './globals.css';
 import { IBM_Plex_Sans_JP } from 'next/font/google';
 import { AuthProvider } from '../context/AuthContext';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 const ibmPlexSansJP = IBM_Plex_Sans_JP({
   weight: ['300', '400', '500', '600', '700'],
@@ -24,6 +26,11 @@ export const metadata = {
     index: true,
     follow: true,
   },
+  icons: {
+    icon: '/favicon.png',
+    apple: '/apple-icon.png',
+  },
+  manifest: '/manifest.json',
   openGraph: {
     title: 'Baithak - Student Discussion & Campus Circle',
     description: 'A student-centered discussion platform built to create meaningful conversations within educational communities.',
@@ -51,13 +58,12 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={ibmPlexSansJP.className}>
-      <head>
-        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
-      </head>
       <body>
         <AuthProvider>
           {children}
         </AuthProvider>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

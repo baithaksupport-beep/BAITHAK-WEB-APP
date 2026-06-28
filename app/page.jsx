@@ -3,7 +3,7 @@ import LandingPageClient from "./LandingPageClient";
 export const metadata = {
   title: 'Baithak - Ek Aisi Baithak bhi Zaroori hai Mittar ! ',
   description: 'Ask questions, share study resources, and get class updates from seniors who actually know your course syllabus, canteen hacks, and exam patterns. Join your VSSUT campus circle on Baithak.',
-  keywords: ['Baithak', 'Student Discussion Circle', 'VSSUT Campus Circle', 'College Study Material', 'Syllabus Guides', 'Seniors Advice'],
+  keywords: ['Baithak', 'VSSUT', 'VSSUT official page', 'sambalpur', 'vssut', 'kirba', 'baithak', 'vssut discussion', 'uce burla', 'burla', 'vssut blog', 'vssut clubs', 'illumina', 'samavesh', 'vasaunt', 'vssut placements', 'discussion hub', 'discussion forum', 'jee counselling', 'ojee counselling', 'vssut baithak', 'outr', 'engineering colleges in odisha', 'igit sarang', 'oldest engineering college', 'agastya hor', 'pulaha hor', 'pulastya hor', 'veerracers club vssut', 'odisha colleges', 'veerpreps', 'iitkirba', 'college discussion', 'university students platform', 'college doubt discussion', 'students mentorship', 'engineering student community', 'college community', 'academic doubts', 'career guidance', 'campus discussions', 'iitbbsr', 'nitr', 'vssut fee structure', 'vssut campus tour', 'iimsambalpur', 'iimsbp', 'vimsar', 'vssut cutoff', 'enigma'],
 };
 
 export default function Home() {

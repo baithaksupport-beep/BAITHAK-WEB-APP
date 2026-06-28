@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute = ({ children, type = 'protected' }) => {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, signOut } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -54,11 +54,22 @@ const ProtectedRoute = ({ children, type = 'protected' }) => {
   if (user && !profile) {
     return (
       <div className="min-h-screen bg-bg-dark text-on-surface font-body flex flex-col items-center justify-center p-6">
-        <div className="glass-card p-8 rounded-3xl border border-white/10 flex flex-col items-center gap-4">
+        <div className="glass-card p-8 rounded-3xl border border-white/10 flex flex-col items-center gap-4 text-center">
           <Loader2 className="animate-spin text-accent-yellow" size={32} />
-          <p className="text-xs text-on-surface-variant font-semibold tracking-wider">
-            Syncing Profile Data...
-          </p>
+          <div className="space-y-1">
+            <p className="text-xs text-on-surface-variant font-semibold tracking-wider">
+              Syncing Profile Data...
+            </p>
+            <p className="text-[10px] text-on-surface-variant/50 max-w-[200px]">
+              If this takes too long, your session might be broken.
+            </p>
+          </div>
+          <button 
+            onClick={signOut}
+            className="mt-2 text-[10px] font-bold text-red-400 hover:text-red-300 border border-red-500/20 bg-red-500/10 px-4 py-1.5 rounded-full transition-colors cursor-pointer"
+          >
+            Clear Session
+          </button>
         </div>
       </div>
     );
