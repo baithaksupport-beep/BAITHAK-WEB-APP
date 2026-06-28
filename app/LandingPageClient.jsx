@@ -113,43 +113,47 @@ const LandingPageClient = () => {
 
   // Landing Page Entry Animations
   useEffect(() => {
-    // Reveal animation for all elements marked with class 'reveal-landing'
-    const reveals = document.querySelectorAll('.reveal-landing');
-    reveals.forEach((el, index) => {
-      gsap.fromTo(el,
-        { opacity: 0, y: 30 },
-        { 
-          opacity: 1, 
-          y: 0, 
-          duration: 0.8, 
-          delay: index * 0.1, 
-          ease: 'power3.out',
-          scrollTrigger: {
-            trigger: el,
-            start: 'top 85%',
+    const ctx = gsap.context(() => {
+      // Reveal animation for all elements marked with class 'reveal-landing'
+      const reveals = document.querySelectorAll('.reveal-landing');
+      reveals.forEach((el, index) => {
+        gsap.fromTo(el,
+          { opacity: 0, y: 30 },
+          { 
+            opacity: 1, 
+            y: 0, 
+            duration: 0.8, 
+            delay: index * 0.1, 
+            ease: 'power3.out',
+            scrollTrigger: {
+              trigger: el,
+              start: 'top 85%',
+            }
           }
-        }
-      );
+        );
+      });
+
+      // Custom floating motion for right column cards in Hero
+      gsap.to('.hero-float-1', {
+        y: -12,
+        rotation: -1,
+        duration: 3,
+        repeat: -1,
+        yoyo: true,
+        ease: 'power1.inOut'
+      });
+      gsap.to('.hero-float-2', {
+        y: 12,
+        rotation: 2,
+        duration: 3.5,
+        repeat: -1,
+        yoyo: true,
+        ease: 'power1.inOut',
+        delay: 0.5
+      });
     });
 
-    // Custom floating motion for right column cards in Hero
-    gsap.to('.hero-float-1', {
-      y: -12,
-      rotation: -1,
-      duration: 3,
-      repeat: -1,
-      yoyo: true,
-      ease: 'power1.inOut'
-    });
-    gsap.to('.hero-float-2', {
-      y: 12,
-      rotation: 2,
-      duration: 3.5,
-      repeat: -1,
-      yoyo: true,
-      ease: 'power1.inOut',
-      delay: 0.5
-    });
+    return () => ctx.revert();
   }, []);
 
   // Scroll walkway animation for "How Baithak Works"
