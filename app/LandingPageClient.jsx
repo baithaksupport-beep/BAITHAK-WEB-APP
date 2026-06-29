@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { MotionPathPlugin } from 'gsap/MotionPathPlugin';
@@ -55,6 +56,17 @@ const LandingPageClient = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('');
   const [openFaq, setOpenFaq] = useState(null);
+
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [mobileMenuOpen]);
 
   // Scroll Spy logic to highlight active section in navbar
   useEffect(() => {
@@ -109,6 +121,13 @@ const LandingPageClient = () => {
       }
     }, 70); // 70ms per character
     return () => clearInterval(timer);
+  }, []);
+
+  // Fix GSAP Scroll Clipping (FOUT Bug)
+  useEffect(() => {
+    document.fonts.ready.then(() => {
+      ScrollTrigger.refresh();
+    });
   }, []);
 
   // Landing Page Entry Animations
@@ -166,85 +185,88 @@ const LandingPageClient = () => {
       walkerRef.current.setAttribute('transform', 'translate(80, 80)');
     }
 
-    const mm = gsap.matchMedia();
+    let ctx = gsap.context(() => {
+      const mm = gsap.matchMedia();
 
-    mm.add("(min-width: 768px)", () => {
-      // Guaranteed visible here on desktop viewport
-      const activePath = activePathRef.current;
-      const bgPath = bgPathRef.current;
-      if (!activePath || !bgPath) return;
+      mm.add("(min-width: 768px)", () => {
+        // Guaranteed visible here on desktop viewport
+        const activePath = activePathRef.current;
+        const bgPath = bgPathRef.current;
+        if (!activePath || !bgPath) return;
 
-      const pathLength = bgPath.getTotalLength();
+        const pathLength = bgPath.getTotalLength();
 
-      // Set initial dasharray and offset so path starts invisible
-      gsap.set(activePath, {
-        strokeDasharray: pathLength,
-        strokeDashoffset: pathLength,
-      });
+        // Set initial dasharray and offset so path starts invisible
+        gsap.set(activePath, {
+          strokeDasharray: pathLength,
+          strokeDashoffset: pathLength,
+        });
 
-      // Set initial position of walker at start of path using MotionPathPlugin
-      if (walkerRef.current) {
-        gsap.set(walkerRef.current, {
+        // Set initial position of walker at start of path using MotionPathPlugin
+        if (walkerRef.current) {
+          gsap.set(walkerRef.current, {
+            motionPath: {
+              path: bgPath,
+              align: bgPath,
+              alignOrigin: [0.5, 0.5],
+              start: 0,
+              end: 0
+            }
+          });
+        }
+
+        // Create scroll-linked timeline
+        const scrollTl = gsap.timeline({
+          scrollTrigger: {
+            trigger: howItWorksRef.current,
+            start: 'top top',
+            end: '+=150%',
+            pin: true,
+            pinSpacing: true,
+            scrub: 0.5,
+            snap: {
+              snapTo: (value, self) => {
+                return self.direction === 1 ? 1 : 0;
+              },
+              duration: { min: 0.6, max: 1.0 },
+              delay: 0.05,
+              ease: 'power2.inOut'
+            }
+          },
+        });
+
+        // Animate path drawing
+        scrollTl.to(activePath, {
+          strokeDashoffset: 0,
+          ease: 'none',
+          duration: 1,
+        }, 0);
+
+        // Animate walker position along path using MotionPathPlugin
+        scrollTl.to(walkerRef.current, {
           motionPath: {
             path: bgPath,
             align: bgPath,
-            alignOrigin: [0.5, 0.5],
-            start: 0,
-            end: 0
-          }
-        });
-      }
+            alignOrigin: [0.5, 0.5]
+          },
+          ease: 'none',
+          duration: 1,
+        }, 0);
 
-      // Create scroll-linked timeline
-      const scrollTl = gsap.timeline({
-        scrollTrigger: {
-          trigger: howItWorksRef.current,
-          start: 'top top',
-          end: '+=150%',
-          pin: true,
-          pinSpacing: true,
-          scrub: 0.5,
-          snap: {
-            snapTo: (value, self) => {
-              return self.direction === 1 ? 1 : 0;
-            },
-            duration: { min: 0.6, max: 1.0 },
-            delay: 0.05,
-            ease: 'power2.inOut'
-          }
-        },
+        // Dynamic node circles glow on-scroll
+        scrollTl.fromTo('.step-node-1', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))' }, { scale: 1.2, filter: 'drop-shadow(0 0 15px rgba(255,186,9,0.8))', duration: 0.2 }, 0)
+          .to('.step-node-1', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))', duration: 0.2 }, 0.35)
+          
+          .fromTo('.step-node-2', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))' }, { scale: 1.2, filter: 'drop-shadow(0 0 15px rgba(255,186,9,0.8))', duration: 0.2 }, 0.35)
+          .to('.step-node-2', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))', duration: 0.2 }, 0.7)
+          
+          .fromTo('.step-node-3', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))' }, { scale: 1.2, filter: 'drop-shadow(0 0 15px rgba(255,186,9,0.8))', duration: 0.2 }, 0.7);
       });
-
-      // Animate path drawing
-      scrollTl.to(activePath, {
-        strokeDashoffset: 0,
-        ease: 'none',
-        duration: 1,
-      }, 0);
-
-      // Animate walker position along path using MotionPathPlugin
-      scrollTl.to(walkerRef.current, {
-        motionPath: {
-          path: bgPath,
-          align: bgPath,
-          alignOrigin: [0.5, 0.5]
-        },
-        ease: 'none',
-        duration: 1,
-      }, 0);
-
-      // Dynamic node circles glow on-scroll
-      scrollTl.fromTo('.step-node-1', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))' }, { scale: 1.2, filter: 'drop-shadow(0 0 15px rgba(255,186,9,0.8))', duration: 0.2 }, 0)
-        .to('.step-node-1', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))', duration: 0.2 }, 0.35)
-        
-        .fromTo('.step-node-2', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))' }, { scale: 1.2, filter: 'drop-shadow(0 0 15px rgba(255,186,9,0.8))', duration: 0.2 }, 0.35)
-        .to('.step-node-2', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))', duration: 0.2 }, 0.7)
-        
-        .fromTo('.step-node-3', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))' }, { scale: 1.2, filter: 'drop-shadow(0 0 15px rgba(255,186,9,0.8))', duration: 0.2 }, 0.7);
     });
 
     return () => {
-      mm.revert();
+      ScrollTrigger.getAll().forEach(t => t.kill());
+      ctx.revert();
     };
   }, []);
 
@@ -258,7 +280,7 @@ const LandingPageClient = () => {
         {/* Desktop Navigation */}
         <nav className="hidden md:flex fixed top-6 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-4xl rounded-full border border-white/10 bg-surface-dark/60 backdrop-blur-xl z-[60] justify-between items-center px-8 py-3.5 shadow-2xl transition-all duration-300 h-[80px] w-100px">
           <a href="#" className="flex items-center">
-            <img src="/logo.png" alt="Baithak Logo" className="h-30 w-auto object-contain hover:opacity-90 transition-opacity" />
+            <Image src="/logo.png" alt="Baithak Logo" width={120} height={40} className="h-30 w-auto object-contain hover:opacity-90 transition-opacity" />
           </a>
           <div className="flex gap-4 items-center">
             <a
@@ -299,6 +321,7 @@ const LandingPageClient = () => {
 
       
         <button 
+          aria-label="Open mobile menu"
           onClick={() => setMobileMenuOpen(true)}
           className="md:hidden fixed top-6 right-6 w-12 h-12 rounded-full border border-white/10 bg-surface-dark/80 backdrop-blur-xl z-[60] flex items-center justify-center text-on-surface hover:text-accent-yellow shadow-2xl transition-all duration-300 cursor-pointer"
         >
@@ -326,9 +349,10 @@ const LandingPageClient = () => {
             <div className="flex flex-col space-y-8">
               <div className="flex justify-between items-center h-16 w-auto">
                 <a href="#" className="flex items-center" onClick={() => setMobileMenuOpen(false)}>
-                  <img src="/logo.png" alt="Baithak Logo" className="h-100 w-auto object-contain hover:opacity-90 transition-opacity" />
+                  <Image src="/logo.png" alt="Baithak Logo" width={120} height={40} className="h-100 w-auto object-contain hover:opacity-90 transition-opacity" />
                 </a>
                 <button 
+                  aria-label="Close mobile menu"
                   onClick={() => setMobileMenuOpen(false)}
                   className="text-on-surface hover:text-accent-yellow transition-colors cursor-pointer"
                 >
@@ -375,12 +399,12 @@ const LandingPageClient = () => {
               <Button 
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  document.getElementById('join-section')?.scrollIntoView({ behavior: 'smooth' });
+                  signInWithGoogle();
                 }} 
                 variant="primary" 
                 className="w-full py-3 text-xs font-bold cursor-pointer"
               >
-                Join Baithak
+                Sign In / Join
               </Button>
               <p className="text-[10px] text-center text-on-surface-variant/40">© 2026 Baithak.</p>
             </div>
@@ -444,7 +468,7 @@ const LandingPageClient = () => {
                   onClick={signInWithGoogle}
                   className="w-full bg-white hover:bg-neutral-100 text-black font-semibold py-3.5 px-6 rounded-full flex items-center justify-center gap-3 transition-all duration-300 shadow-sm cursor-pointer text-sm animate-fade-in"
                 >
-                  <img src="google-logo.png" alt="Google" className='h-5 w-auto '/>
+                  <Image src="/google-logo.png" alt="Google" width={20} height={20} className='h-5 w-auto '/>
                   Sign up with Google
                 </button>
 
@@ -472,7 +496,7 @@ const LandingPageClient = () => {
                     onClick={signInWithGoogle}
                     className="w-full bg-white font-semibold py-3.5 px-6 rounded-full transition-all duration-300 cursor-pointer text-black font-sans flex items-center justify-center"
                   >
-                    <img src="google-logo.png" alt="Google" className="w-auto h-5 inline mr-[5px]" />
+                    <Image src="/google-logo.png" alt="Google" width={20} height={20} className="w-auto h-5 inline mr-[5px]" />
                     Sign in with Google
                   </button>
                 </div>
@@ -489,10 +513,10 @@ const LandingPageClient = () => {
               <video 
                 src="https://pub-da45e99017dca2252440c60f874d5ab8.r2.dev/landing-page-video/feature-tour.mp4" 
                 className="w-full h-full object-cover transition-transform duration-[3000ms] group-hover:scale-105" 
-                autoPlay 
-                loop 
-                muted 
+                controls 
                 playsInline 
+                preload="none"
+                poster="/dashboard-mockup.png"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-bg-dark/80 via-transparent to-transparent pointer-events-none"></div>
             </div>
@@ -730,7 +754,7 @@ const LandingPageClient = () => {
         <footer className="w-full py-12 px-6 border-t border-white/5 bg-surface-dark/20 text-center">
           <div className="max-w-4xl mx-auto flex flex-col items-center gap-6">
             <div className="m-[1px] w-auto h-30">
-              <img src="/logo.png" alt="Baithak Logo" className="w-auto h-40" />
+              <Image src="/logo.png" alt="Baithak Logo" width={120} height={40} className="w-auto h-40" />
             </div>
             <div className="flex flex-wrap gap-8 text-[11px] font-bold text-on-surface-variant/50 items-center justify-center">
               <Link href="/about" className="hover:text-accent-yellow transition-colors cursor-pointer font-bold bg-transparent border-0">About Us</Link>

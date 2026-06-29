@@ -26,17 +26,28 @@ export async function middleware(request) {
   const ip = request.ip ?? request.headers.get('x-forwarded-for') ?? '127.0.0.1';
 
   // Apply rate limiting
-  const { success, limit, reset, remaining } = await ratelimit.limit(`ratelimit_${ip}`);
+  let limitResult;
+  try {
+    limitResult = await ratelimit.limit(`ratelimit_${ip}`);
+  } catch (err) {
+    console.error('Redis Rate Limit Exception, failing open:', err);
+    return NextResponse.next(); // Fail open: do not block users if Redis goes down
+  }
+  const { success, limit, reset, remaining } = limitResult;
 
   if (!success) {
-    return new NextResponse('Too Many Requests. Please slow down and try again later.', {
-      status: 429,
-      headers: {
-        'X-RateLimit-Limit': limit.toString(),
-        'X-RateLimit-Remaining': remaining.toString(),
-        'X-RateLimit-Reset': reset.toString(),
-      },
-    });
+    return new NextResponse(
+      JSON.stringify({ error: 'Too Many Requests. Please slow down and try again later.' }), 
+      {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-RateLimit-Limit': limit.toString(),
+          'X-RateLimit-Remaining': remaining.toString(),
+          'X-RateLimit-Reset': reset.toString(),
+        },
+      }
+    );
   }
 
   // Allow the request to proceed
@@ -52,9 +63,8 @@ export async function middleware(request) {
 
 // Configure which paths the middleware should run on
 export const config = {
-  // We protect API routes and sensitive pages from bot spam
+  // Only protect API routes. Rate limiting page routes breaks RSC payloads.
   matcher: [
-    '/api/:path*', 
-    '/profile-setup'
+    '/api/:path*'
   ],
 };

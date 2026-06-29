@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabaseClient';
 
 const AuthContext = createContext({
@@ -14,6 +15,7 @@ const AuthContext = createContext({
 });
 
 export const AuthProvider = ({ children }) => {
+  const router = useRouter();
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -29,7 +31,7 @@ export const AuthProvider = ({ children }) => {
         .single();
 
       if (error) {
-        if (error.code === 'PGRST116') {
+        if (error.code === 'PGRST116' || error.message.includes('JSON object requested, multiple (or no) rows returned')) {
           // Profile row does not exist yet. Returning fallback onboarding state.
           console.warn('Profile not found for authenticated user. Returning fallback onboarding state.');
           return { id: userId, setup_completed: false };
@@ -39,7 +41,7 @@ export const AuthProvider = ({ children }) => {
       return data;
     } catch (err) {
       console.error('Error fetching user profile:', err.message);
-      return null;
+      return { id: userId, setup_completed: false, error: true };
     }
   };
 
@@ -53,38 +55,53 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let isMounted = true;
 
-    // Safety fallback: if auth takes longer than 8 seconds, force stop loading
-    // This prevents users from getting permanently stuck on "Initializing Baithak..."
     const safetyTimeout = setTimeout(() => {
-      if (isMounted && loading) {
+      if (isMounted) {
         console.warn('Auth initialization timed out. Forcing load completion.');
         setLoading(false);
       }
     }, 8000);
 
-    // In Supabase v2, onAuthStateChange immediately fires an 'INITIAL_SESSION' event.
-    // By relying solely on this listener, we prevent race conditions with getSession() during React 18 StrictMode.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      if (!isMounted) return;
-
+    // 1. Explicit Session Fetch (Bypasses Strict Mode drops)
+    const initializeAuth = async () => {
       try {
-        setSession(currentSession);
-        setUser(currentSession?.user || null);
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
 
-        if (currentSession?.user) {
-          const profileData = await fetchProfile(currentSession.user.id);
-          if (isMounted) setProfile(profileData);
-        } else {
-          if (isMounted) setProfile(null);
-        }
-      } catch (err) {
-        console.error('Auth state change error:', err);
-      } finally {
         if (isMounted) {
-          setLoading(false);
-          clearTimeout(safetyTimeout);
+          setSession(session);
+          setUser(session?.user || null);
         }
+
+        if (session?.user) {
+          const profileData = await fetchProfile(session.user.id);
+          if (isMounted) setProfile(profileData);
+        }
+      } catch (error) {
+        console.error("Critical Auth Initialization Error:", error);
+      } finally {
+        if (isMounted) setLoading(false);
+        clearTimeout(safetyTimeout);
       }
+    };
+
+    initializeAuth();
+
+    // 2. Background Listener for Future Events Only
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+      // Ignore INITIAL_SESSION as it is handled by getSession() above
+      if (!isMounted || event === 'INITIAL_SESSION') return; 
+
+      setSession(currentSession);
+      setUser(currentSession?.user || null);
+
+      if (currentSession?.user) {
+        const profileData = await fetchProfile(currentSession.user.id);
+        if (isMounted) setProfile(profileData);
+      } else {
+        if (isMounted) setProfile(null);
+      }
+      if (isMounted) setLoading(false);
     });
 
     return () => {
@@ -97,7 +114,7 @@ export const AuthProvider = ({ children }) => {
   const signInWithGoogle = async () => {
     try {
       setLoading(true);
-      const redirectUrl = window.location.origin;
+      const redirectUrl = `${window.location.origin}/dashboard`;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -117,13 +134,15 @@ export const AuthProvider = ({ children }) => {
       setLoading(true);
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      setSession(null);
-      setUser(null);
-      setProfile(null);
     } catch (err) {
       console.error('Logout failed:', err.message);
     } finally {
+      setSession(null);
+      setUser(null);
+      setProfile(null);
       setLoading(false);
+      router.refresh();
+      router.replace('/');
     }
   };
 

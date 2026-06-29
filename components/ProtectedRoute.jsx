@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute = ({ children, type = 'protected' }) => {
-  const { user, profile, loading, signOut } = useAuth();
+  const { user, profile, loading, signOut, refreshProfile } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -36,6 +36,19 @@ const ProtectedRoute = ({ children, type = 'protected' }) => {
       return;
     }
   }, [user, profile, loading, type, router]);
+
+  useEffect(() => {
+    let retryTimer;
+    if (user && !profile && !loading) {
+      // Attempt to fetch profile again after 3 seconds if stuck
+      retryTimer = setTimeout(() => {
+        if (typeof refreshProfile === 'function') {
+          refreshProfile();
+        }
+      }, 3000);
+    }
+    return () => clearTimeout(retryTimer);
+  }, [user, profile, loading, refreshProfile]);
 
   if (loading) {
     return (
@@ -78,6 +91,20 @@ const ProtectedRoute = ({ children, type = 'protected' }) => {
   // 1. Unauthenticated
   if (!user && type === 'public-only') {
     return children;
+  }
+
+  // 1.5 Unauthenticated but requesting protected route - force loader while replacing
+  if (!user && type !== 'public-only') {
+    return (
+      <div className="min-h-screen bg-bg-dark text-on-surface font-body flex flex-col items-center justify-center p-6">
+        <div className="glass-card p-8 rounded-3xl border border-white/10 flex flex-col items-center gap-4">
+          <Loader2 className="animate-spin text-accent-yellow" size={32} />
+          <p className="text-xs text-on-surface-variant font-semibold tracking-wider">
+            Redirecting to login...
+          </p>
+        </div>
+      </div>
+    );
   }
 
   // 2. Authenticated, onboarding incomplete

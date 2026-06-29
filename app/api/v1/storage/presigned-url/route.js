@@ -7,7 +7,7 @@ const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
 const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
 const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
 const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || "baithak-media";
-const r2PublicUrl = process.env.VITE_R2_PUBLIC_URL || `https://pub-${accountId}.r2.dev`;
+const r2PublicUrl = process.env.NEXT_PUBLIC_R2_URL || `https://pub-${accountId}.r2.dev`;
 
 let s3Client = null;
 
@@ -39,8 +39,8 @@ export async function GET(request) {
   }
 
   const token = authHeader.split(" ")[1];
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return Response.json(

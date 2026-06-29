@@ -26,7 +26,7 @@ const DashboardPageClient = () => {
         {/* Premium Header */}
         <header className="w-full max-w-5xl border-b border-white/5 bg-surface-dark/40 backdrop-blur-xl px-6 py-4 flex items-center justify-between static md:sticky top-0 z-40">
           <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="Baithak" className="h-10 w-auto object-contain" />
+            <Image src="/logo.png" alt="Baithak" width={120} height={40} className="object-contain" />
             <span className="text-[10px] bg-accent-yellow/10 border border-accent-yellow/20 text-accent-yellow px-2 py-0.5 rounded font-mono font-bold uppercase tracking-wider">
               VSSUT Circle
             </span>
@@ -35,6 +35,7 @@ const DashboardPageClient = () => {
           <div className="flex items-center gap-4">
             <button 
               onClick={signOut}
+              aria-label="Sign out of Baithak"
               className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant hover:text-red-400 transition-colors bg-white/5 hover:bg-red-500/10 border border-white/10 px-4 py-2 rounded-full cursor-pointer"
             >
               <LogOut size={13} />
@@ -53,7 +54,7 @@ const DashboardPageClient = () => {
 
               <div className="flex flex-col items-center text-center space-y-4 pt-2">
                 {/* Profile Picture */}
-                {profile?.avatar_url?.startsWith('http') ? (
+                {(profile?.avatar_url || '').startsWith('http') ? (
                   <div className="relative w-20 h-20 rounded-full border-2 border-accent-yellow shadow-md overflow-hidden">
                     <Image 
                       src={profile.avatar_url} 
@@ -61,7 +62,7 @@ const DashboardPageClient = () => {
                       fill
                       sizes="80px"
                       className="object-cover"
-                      unoptimized={true}
+                      unoptimized={profile?.avatar_url?.includes('r2.dev')}
                     />
                   </div>
                 ) : (

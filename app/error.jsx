@@ -32,8 +32,8 @@ export default function Error({ error, reset }) {
             A critical component crashed while trying to load this page. We've logged the error.
           </p>
           <div className="bg-black/30 border border-white/5 rounded-xl p-4 mt-4 w-full text-left overflow-hidden">
-            <p className="text-[10px] font-mono text-red-400/80 truncate">
-              {error?.message || "Unknown rendering exception"}
+            <p className="text-[10px] font-mono text-red-400/80 break-words whitespace-pre-wrap max-h-32 overflow-y-auto">
+              {"An unexpected client error occurred."}
             </p>
           </div>
         </div>

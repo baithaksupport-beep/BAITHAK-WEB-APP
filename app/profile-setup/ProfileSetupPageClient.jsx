@@ -8,8 +8,10 @@ import Button from '../../components/ui/Button';
 import ProtectedRoute from '../../components/ProtectedRoute';
 import Image from 'next/image';
 
+const R2_BASE_URL = process.env.NEXT_PUBLIC_R2_URL || 'https://pub-da45e99017dca2252440c60f874d5ab8.r2.dev';
+
 const PRESET_AVATARS = Array.from({ length: 24 }, (_, i) => 
-  `https://pub-da45e99017dca2252440c60f874d5ab8.r2.dev/avatars/preset/avatar${i + 1}.png`
+  `${R2_BASE_URL}/avatars/preset/avatar${i + 1}.png`
 );
 
 const SwipeToSubmit = ({ isSubmitting, disabled, onSubmit }) => {
@@ -401,6 +403,7 @@ const ProfileSetupPageClient = () => {
                           fill
                           sizes="160px"
                           className="object-cover"
+                          unoptimized={true}
                         />
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
                           <Camera size={24} className="text-white" />
@@ -447,7 +450,7 @@ const ProfileSetupPageClient = () => {
                           : 'border-transparent hover:border-white/20'
                       }`}
                     >
-                      <Image src={url} alt={`Preset ${idx + 1}`} fill sizes="56px" className="object-cover" />
+                      <Image src={url} alt={`Preset ${idx + 1}`} fill sizes="56px" className="object-cover" unoptimized={true} />
                       {customAvatarUrl === url && !localPreviewUrl && (
                         <div className="absolute inset-0 bg-black/20 flex items-center justify-center backdrop-blur-[1px]">
                           <Check size={18} className="text-accent-yellow stroke-[4]" />
@@ -467,7 +470,7 @@ const ProfileSetupPageClient = () => {
               form="profile-form"
               type="submit"
               variant="primary"
-              disabled={!isFormValid}
+              disabled={!isFormValid || isSubmitting}
               className="hidden md:flex w-full md:w-auto px-8 py-3.5 text-xs md:text-sm font-bold tracking-widest uppercase hover:shadow-[0_0_30px_rgba(255,186,9,0.3)] transition-all items-center justify-center gap-2 group cursor-pointer rounded-xl"
             >
               {isSubmitting ? (
@@ -486,7 +489,7 @@ const ProfileSetupPageClient = () => {
             {/* Mobile Swipe to Submit (Hidden on Desktop) */}
             <SwipeToSubmit 
               isSubmitting={isSubmitting} 
-              disabled={!isFormValid} 
+              disabled={!isFormValid || isSubmitting} 
               onSubmit={() => {
                 // Manually trigger the form submission via event since we are not a standard submit button
                 const form = document.getElementById('profile-form');
