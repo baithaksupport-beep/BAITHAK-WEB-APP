@@ -1,5 +1,5 @@
 export default async function sitemap() {
-  const baseUrl = 'https://baithak-web-app.vercel.app';
+  const baseUrl = 'https://baithakpe.com';
   
   // Public crawlable routes
   const routes = ['', '/about', '/terms', '/privacy'];

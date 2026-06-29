@@ -11,7 +11,7 @@ const ibmPlexSansJP = IBM_Plex_Sans_JP({
 });
 
 export const metadata = {
-  metadataBase: new URL('https://baithak-web-app.vercel.app'),
+  metadataBase: new URL('https://baithakpe.com'),
   title: {
     default: 'Baithak - Student Discussion Platform',
     template: '%s | Baithak',
@@ -34,7 +34,7 @@ export const metadata = {
   openGraph: {
     title: 'Baithak - Student Discussion & Campus Circle',
     description: 'A student-centered discussion platform built to create meaningful conversations within educational communities.',
-    url: 'https://baithak-web-app.vercel.app',
+    url: 'https://baithakpe.com',
     siteName: 'Baithak',
     locale: 'en_US',
     type: 'website',

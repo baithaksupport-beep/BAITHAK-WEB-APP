@@ -1,5 +1,5 @@
 export default function robots() {
-  const baseUrl = 'https://baithak-web-app.vercel.app';
+  const baseUrl = 'https://baithakpe.com';
   return {
     rules: {
       userAgent: '*',
