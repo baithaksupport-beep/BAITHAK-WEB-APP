@@ -48,9 +48,7 @@ const LandingPageClient = () => {
   const { signInWithGoogle } = useAuth();
   
   const howItWorksRef = useRef(null);
-  const bgPathRef = useRef(null);
-  const activePathRef = useRef(null);
-  const walkerRef = useRef(null);
+  const walkwayPathRef = useRef(null);
 
   const [typedCount, setTypedCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -177,96 +175,38 @@ const LandingPageClient = () => {
 
   // Scroll walkway animation for "How Baithak Works"
   useEffect(() => {
-    const activePath = activePathRef.current;
-    if (!activePath) return;
-
-    // Set static starting position fallback so the walker is not cut off at (0, 0) initially or on mobile
-    if (walkerRef.current) {
-      walkerRef.current.setAttribute('transform', 'translate(80, 80)');
-    }
-
     let ctx = gsap.context(() => {
-      const mm = gsap.matchMedia();
+      // 2. Safeguard: Ensure elements exist in the DOM
+      if (!howItWorksRef.current || !walkwayPathRef.current) return;
 
-      mm.add("(min-width: 768px)", () => {
-        // Guaranteed visible here on desktop viewport
-        const activePath = activePathRef.current;
-        const bgPath = bgPathRef.current;
-        if (!activePath || !bgPath) return;
+      const path = walkwayPathRef.current;
+      
+      // 3. Force browser to calculate exact path geometry
+      const pathLength = path.getTotalLength();
 
-        const pathLength = bgPath.getTotalLength();
-
-        // Set initial dasharray and offset so path starts invisible
-        gsap.set(activePath, {
-          strokeDasharray: pathLength,
-          strokeDashoffset: pathLength,
-        });
-
-        // Set initial position of walker at start of path using MotionPathPlugin
-        if (walkerRef.current) {
-          gsap.set(walkerRef.current, {
-            motionPath: {
-              path: bgPath,
-              align: bgPath,
-              alignOrigin: [0.5, 0.5],
-              start: 0,
-              end: 0
-            }
-          });
-        }
-
-        // Create scroll-linked timeline
-        const scrollTl = gsap.timeline({
-          scrollTrigger: {
-            trigger: howItWorksRef.current,
-            start: 'top top',
-            end: '+=150%',
-            pin: true,
-            pinSpacing: true,
-            scrub: 0.5,
-            snap: {
-              snapTo: (value, self) => {
-                return self.direction === 1 ? 1 : 0;
-              },
-              duration: { min: 0.6, max: 1.0 },
-              delay: 0.05,
-              ease: 'power2.inOut'
-            }
-          },
-        });
-
-        // Animate path drawing
-        scrollTl.to(activePath, {
-          strokeDashoffset: 0,
-          ease: 'none',
-          duration: 1,
-        }, 0);
-
-        // Animate walker position along path using MotionPathPlugin
-        scrollTl.to(walkerRef.current, {
-          motionPath: {
-            path: bgPath,
-            align: bgPath,
-            alignOrigin: [0.5, 0.5]
-          },
-          ease: 'none',
-          duration: 1,
-        }, 0);
-
-        // Dynamic node circles glow on-scroll
-        scrollTl.fromTo('.step-node-1', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))' }, { scale: 1.2, filter: 'drop-shadow(0 0 15px rgba(255,186,9,0.8))', duration: 0.2 }, 0)
-          .to('.step-node-1', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))', duration: 0.2 }, 0.35)
-          
-          .fromTo('.step-node-2', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))' }, { scale: 1.2, filter: 'drop-shadow(0 0 15px rgba(255,186,9,0.8))', duration: 0.2 }, 0.35)
-          .to('.step-node-2', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))', duration: 0.2 }, 0.7)
-          
-          .fromTo('.step-node-3', { scale: 1, filter: 'drop-shadow(0 0 0px rgba(255,186,9,0))' }, { scale: 1.2, filter: 'drop-shadow(0 0 15px rgba(255,186,9,0.8))', duration: 0.2 }, 0.7);
+      // 4. Set initial hidden state explicitly
+      gsap.set(path, { 
+        strokeDasharray: pathLength, 
+        strokeDashoffset: pathLength,
+        opacity: 1 // Ensure the SVG itself isn't hidden by CSS
       });
-    });
+
+      // 5. Link the drawing animation strictly to the container's scroll depth
+      gsap.to(path, {
+        strokeDashoffset: 0,
+        ease: "none",
+        scrollTrigger: {
+          trigger: howItWorksRef.current,
+          start: "top 60%", // Start drawing when container is 60% down the viewport
+          end: "bottom 80%", // Finish drawing before the user scrolls past it
+          scrub: 1.5, // Smooth scrubbing
+          invalidateOnRefresh: true, // Recalculate on mobile orientation shifts
+        }
+      });
+    }, howItWorksRef); // Scope context to the container
 
     return () => {
-      ScrollTrigger.getAll().forEach(t => t.kill());
-      ctx.revert();
+      ctx.revert(); // Strict cleanup to prevent React strict-mode duplication
     };
   }, []);
 
@@ -509,14 +449,16 @@ const LandingPageClient = () => {
         <section className="relative w-full py-16 px-6 max-w-7xl mx-auto flex flex-col items-center justify-center z-20">
           <div className="w-full relative rounded-[2rem] md:rounded-[3rem] p-2 md:p-3 bg-gradient-to-b from-white/10 to-transparent shadow-[0_0_100px_rgba(255,186,9,0.1)] backdrop-blur-md reveal-landing border border-white/5">
             <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-accent-yellow/50 to-transparent"></div>
-            <div className="w-full relative rounded-[1.5rem] md:rounded-[2.5rem] overflow-hidden border border-white/10 bg-surface-dark aspect-video flex items-center justify-center group shadow-2xl">
+            <div className="w-full relative rounded-[1.5rem] md:rounded-[2.5rem] overflow-hidden border border-white/10 bg-surface-dark aspect-video flex items-center justify-center group shadow-2xl pointer-events-none">
               <video 
-                src="https://pub-da45e99017dca2252440c60f874d5ab8.r2.dev/landing-page-video/feature-tour.mp4" 
-                className="w-full h-full object-cover transition-transform duration-[3000ms] group-hover:scale-105" 
-                controls 
-                playsInline 
-                preload="none"
+                src={`${process.env.NEXT_PUBLIC_R2_URL || 'https://pub-a45e2aa5add24ba0a8813221a09a64a9.r2.dev'}/landing-page-video/feature-tour.mp4`}
                 poster="/dashboard-mockup.png"
+                autoPlay
+                loop
+                muted
+                playsInline
+                disablePictureInPicture
+                className="w-full h-full object-cover pointer-events-none select-none"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-bg-dark/80 via-transparent to-transparent pointer-events-none"></div>
             </div>
@@ -631,7 +573,7 @@ const LandingPageClient = () => {
 
               {/* Right side: SVG Walkway */}
               <div className="hidden md:flex md:col-span-6 relative items-center justify-center h-full min-h-[450px]">
-                <svg className="w-full h-full max-w-[450px] max-h-[450px]" viewBox="0 0 400 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <svg className="w-full h-full max-w-[450px] max-h-[450px] overflow-visible" viewBox="0 0 400 500" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <defs>
                     <linearGradient id="active-path-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
                       <stop offset="0%" stopColor="#FFE082" />
@@ -646,7 +588,6 @@ const LandingPageClient = () => {
 
                   {/* Background dashed SVG path */}
                   <path
-                    ref={bgPathRef}
                     d="M 80 80 C 300 80, 320 160, 320 250 C 320 340, 300 420, 80 420"
                     stroke="rgba(255, 186, 9, 0.15)"
                     strokeWidth="6"
@@ -657,7 +598,7 @@ const LandingPageClient = () => {
 
                   {/* Foreground active path drawn on scroll */}
                   <path
-                    ref={activePathRef}
+                    ref={walkwayPathRef}
                     d="M 80 80 C 300 80, 320 160, 320 250 C 320 340, 300 420, 80 420"
                     stroke="url(#active-path-gradient)"
                     strokeWidth="6"
@@ -687,16 +628,6 @@ const LandingPageClient = () => {
                     <g transform="translate(-10, -10)">
                       <Coins size={20} className="text-[#FFBA09]" />
                     </g>
-                  </g>
-
-                  {/* The Walker */}
-                  <g ref={walkerRef}>
-                    {/* Outer glow ring */}
-                    <circle r="22" fill="url(#walker-glow)" opacity="0.6" className="animate-pulse" />
-                    {/* Solid base */}
-                    <circle r="14" fill="#FFBA09" stroke="#0A1228" strokeWidth="2.5" />
-                    {/* Center visual dot */}
-                    <circle r="4" fill="#0A1228" />
                   </g>
                 </svg>
               </div>

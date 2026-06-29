@@ -2,7 +2,6 @@
 CREATE TABLE public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   username TEXT UNIQUE,
-  email TEXT UNIQUE,
   display_name TEXT,
   avatar_url TEXT,
   setup_completed BOOLEAN DEFAULT false,

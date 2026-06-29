@@ -23,7 +23,8 @@ export async function middleware(request) {
   }
 
   // Extract the IP address from the request (Vercel sets x-forwarded-for)
-  const ip = request.ip ?? request.headers.get('x-forwarded-for') ?? '127.0.0.1';
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  const ip = request.ip ?? (forwardedFor ? forwardedFor.split(',')[0].trim() : '127.0.0.1');
 
   // Apply rate limiting
   let limitResult;

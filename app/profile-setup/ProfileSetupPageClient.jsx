@@ -8,7 +8,7 @@ import Button from '../../components/ui/Button';
 import ProtectedRoute from '../../components/ProtectedRoute';
 import Image from 'next/image';
 
-const R2_BASE_URL = process.env.NEXT_PUBLIC_R2_URL || 'https://pub-da45e99017dca2252440c60f874d5ab8.r2.dev';
+const R2_BASE_URL = (process.env.NEXT_PUBLIC_R2_URL || 'https://pub-a45e2aa5add24ba0a8813221a09a64a9.r2.dev').replace(/\/$/, '');
 
 const PRESET_AVATARS = Array.from({ length: 24 }, (_, i) => 
   `${R2_BASE_URL}/avatars/preset/avatar${i + 1}.png`
@@ -237,7 +237,6 @@ const ProfileSetupPageClient = () => {
           username,
           display_name: displayName,
           avatar_url: finalAvatarUrl,
-          email: user.email,
           setup_completed: true
         });
 
