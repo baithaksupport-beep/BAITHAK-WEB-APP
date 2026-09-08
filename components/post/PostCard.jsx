@@ -8,6 +8,7 @@ import { MessageSquare, ArrowUpCircle, Eye, Share2, MoreHorizontal, Bookmark, Fl
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import LinkPreview from './LinkPreview';
+import { MentionsInput, Mention } from 'react-mentions';
 
 const timeAgo = (dateStr) => {
   const date = new Date(dateStr);
@@ -61,6 +62,39 @@ const PostCard = ({ post, onReport, onQuickProfile, onDelete, priority = false }
   const [repliesCount, setRepliesCount] = useState(post.comments?.[0]?.count || 0);
   const [editingReplyId, setEditingReplyId] = useState(null);
   const [editReplyContent, setEditReplyContent] = useState('');
+
+  const fetchUsers = async (query, callback) => {
+    try {
+      if (!user) return callback([]);
+      
+      // Fetch connections
+      const { data: connections } = await supabase
+        .from('connections')
+        .select('follower_id, following_id')
+        .eq('status', 'accepted')
+        .or(`follower_id.eq.${user.id},following_id.eq.${user.id}`);
+      
+      if (!connections || connections.length === 0) return callback([]);
+      
+      const connectionIds = connections.map(c => c.follower_id === user.id ? c.following_id : c.follower_id);
+      
+      let queryBuilder = supabase
+        .from('profiles')
+        .select('id, username')
+        .in('id', connectionIds)
+        .limit(10);
+        
+      if (query) {
+        queryBuilder = queryBuilder.ilike('username', `${query}%`);
+      }
+      
+      const { data } = await queryBuilder;
+      callback((data || []).map(u => ({ id: u.username, display: u.username })));
+    } catch (err) {
+      console.error(err);
+      callback([]);
+    }
+  };
 
   useEffect(() => {
     if (user && post.id) {
@@ -121,37 +155,41 @@ const PostCard = ({ post, onReport, onQuickProfile, onDelete, priority = false }
     }
   };
 
-  const handleLike = () => {
-    if (!user) return;
+  const [isLiking, setIsLiking] = useState(false);
+
+  const handleLike = async () => {
+    if (!user || isLiking) return;
+    setIsLiking(true);
     triggerHaptic();
     
-    // Optimistic update
     const wasLiked = isLiked;
     setIsLiked(!wasLiked);
     setLikesCount(prev => wasLiked ? Math.max(0, prev - 1) : prev + 1);
     
-    // Background sync
-    if (wasLiked) {
-      supabase.from('likes').delete().eq('post_id', post.id).eq('user_id', user.id).then(({error}) => {
-        if (error) { setIsLiked(true); setLikesCount(prev => prev + 1); }
-        else {
-          fetch('/api/honor/award', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actionType: 'RECEIVE_UPVOTE', points: -2, referenceId: post.id })
-          }).catch(console.error);
-        }
-      });
-    } else {
-      supabase.from('likes').insert({ post_id: post.id, user_id: user.id }).then(({error}) => {
-        if (error) { setIsLiked(false); setLikesCount(prev => Math.max(0, prev - 1)); }
-      });
-        
-      fetch('/api/honor/award', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actionType: 'RECEIVE_UPVOTE', points: 2, referenceId: post.id })
-      }).catch(console.error);
+    try {
+      if (wasLiked) {
+        const { error } = await supabase.from('likes').delete().eq('post_id', post.id).eq('user_id', user.id);
+        if (error) throw error;
+        fetch('/api/honor/award', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actionType: 'RECEIVE_UPVOTE', points: -2, referenceId: post.id })
+        }).catch(console.error);
+      } else {
+        const { error } = await supabase.from('likes').insert({ post_id: post.id, user_id: user.id });
+        if (error) throw error;
+        fetch('/api/honor/award', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actionType: 'RECEIVE_UPVOTE', points: 2, referenceId: post.id })
+        }).catch(console.error);
+      }
+    } catch (error) {
+      console.error(error);
+      setIsLiked(wasLiked);
+      setLikesCount(prev => wasLiked ? prev + 1 : Math.max(0, prev - 1));
+    } finally {
+      setIsLiking(false);
     }
   };
 
@@ -482,12 +520,28 @@ const PostCard = ({ post, onReport, onQuickProfile, onDelete, priority = false }
             </div>
             {editingReplyId === reply.id ? (
               <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                <textarea
+                <MentionsInput
                   value={editReplyContent}
                   onChange={(e) => setEditReplyContent(e.target.value)}
-                  className="w-full bg-[#1A1B22] border border-white/20 rounded p-2 text-[14px] text-white placeholder-[#8E909E] focus:outline-none focus:border-blue-500 resize-none"
-                  rows={2}
-                />
+                  className="w-full bg-[#1A1B22] border border-white/20 rounded p-2 text-[14px] text-white"
+                  style={{
+                    control: { backgroundColor: 'transparent', fontSize: 14 },
+                    highlighter: { padding: 0 },
+                    input: { padding: 0, border: 'none', outline: 'none', color: 'white' },
+                    suggestions: {
+                      list: { backgroundColor: '#1A1B22', border: '1px solid rgba(255,255,255,0.1)', fontSize: 14, borderRadius: 8, overflow: 'hidden', zIndex: 100 },
+                      item: { padding: '8px 12px' },
+                    },
+                  }}
+                >
+                  <Mention
+                    trigger="@"
+                    data={fetchUsers}
+                    markup="@__display__"
+                    displayTransform={(id, display) => `@${display}`}
+                    style={{ color: '#1d9bf0', backgroundColor: 'rgba(29, 155, 240, 0.1)' }}
+                  />
+                </MentionsInput>
                 <div className="flex justify-end gap-2 mt-2">
                   <button
                     onClick={() => setEditingReplyId(null)}
@@ -505,7 +559,18 @@ const PostCard = ({ post, onReport, onQuickProfile, onDelete, priority = false }
                 </div>
               </div>
             ) : (
-              <p className="text-[14px] text-white/90 leading-relaxed whitespace-pre-wrap break-words">{reply.content}</p>
+              <p className="text-[14px] text-white/90 leading-relaxed whitespace-pre-wrap break-words">
+                {reply.content?.split(/((?:https?:\/\/[^\s]+)|(?:@\w+)|(?:#\w+))/g).map((part, i) => {
+                  if (part.match(/(https?:\/\/[^\s]+)/)) {
+                    return <a key={i} href={part} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-blue-400 hover:underline">{part}</a>;
+                  } else if (part.match(/@\w+/)) {
+                    return <span key={i} className="text-[#1d9bf0] bg-[#1d9bf0]/10 px-1 rounded-md font-medium cursor-pointer hover:underline" onClick={(e) => { e.stopPropagation(); window.location.href = `/profile/${part.slice(1)}`; }}>{part}</span>;
+                  } else if (part.match(/#\w+/)) {
+                    return <span key={i} className="text-blue-400 font-medium">{part}</span>;
+                  }
+                  return part;
+                })}
+              </p>
             )}
             
             {/* Interactive mini-actions for replies */}
@@ -717,9 +782,11 @@ const PostCard = ({ post, onReport, onQuickProfile, onDelete, priority = false }
         <h3 className="text-[22px] sm:text-[26px] font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-white to-white/50 leading-[1.15] mb-2.5 tracking-tight">{post.title}</h3>
         <div className={`relative ${!isExpanded && isLongText ? 'max-h-[140px] overflow-hidden' : ''}`}>
             <p className="text-[15px] sm:text-[17px] text-[#C4C5D5] leading-[1.6] whitespace-pre-wrap font-medium">
-          {post.content?.split(/((?:https?:\/\/[^\s]+)|(?:#\w+))/g).map((part, i) => {
+          {post.content?.split(/((?:https?:\/\/[^\s]+)|(?:@\w+)|(?:#\w+))/g).map((part, i) => {
             if (part.match(/(https?:\/\/[^\s]+)/)) {
               return <a key={i} href={part} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-blue-400 hover:underline">{part}</a>;
+            } else if (part.match(/@\w+/)) {
+              return <span key={i} className="text-[#1d9bf0] bg-[#1d9bf0]/10 px-1 rounded-md font-medium cursor-pointer hover:underline" onClick={(e) => { e.stopPropagation(); window.location.href = `/profile/${part.slice(1)}`; }}>{part}</span>;
             } else if (part.match(/#\w+/)) {
               return <span key={i} className="text-blue-400 font-medium">{part}</span>;
             }
@@ -755,7 +822,7 @@ const PostCard = ({ post, onReport, onQuickProfile, onDelete, priority = false }
         )}
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-between sm:justify-start sm:gap-8 pt-3 border-t border-white/5 mt-4">
+        <div className="flex items-center justify-between pt-3 border-t border-white/5 mt-4 w-full gap-1">
           <button 
             onClick={(e) => { e.stopPropagation(); handleLike(); }}
             className={`flex items-center gap-2 text-xs font-medium transition-all duration-200 active:scale-75 group/btn ${isLiked ? 'text-green-400' : 'text-white/50 hover:text-green-400'}`}
@@ -782,7 +849,7 @@ const PostCard = ({ post, onReport, onQuickProfile, onDelete, priority = false }
               <Bookmark size={18} className={isBookmarked ? 'fill-yellow-400' : ''} />
             </div>
           </button>
-          <button className="flex items-center gap-2 text-xs font-medium text-white/50 hover:text-white/80 transition-colors group/btn hidden sm:flex">
+          <button className="flex items-center gap-2 text-xs font-medium text-white/50 hover:text-white/80 transition-colors group/btn">
             <div className="p-1.5 rounded-full group-hover/btn:bg-white/10 transition-colors flex items-center justify-center">
               <Eye size={18} />
             </div>
@@ -790,7 +857,7 @@ const PostCard = ({ post, onReport, onQuickProfile, onDelete, priority = false }
           </button>
           <button 
             onClick={(e) => { e.stopPropagation(); handleShare(); }}
-            className="flex items-center gap-2 text-xs font-medium text-white/50 hover:text-white/80 transition-colors group/btn ml-auto"
+            className="flex items-center gap-2 text-xs font-medium text-white/50 hover:text-white/80 transition-colors group/btn"
           >
             <div className="p-1.5 rounded-full group-hover/btn:bg-white/10 transition-colors flex items-center justify-center">
               <Share2 size={18} />
@@ -829,18 +896,30 @@ const PostCard = ({ post, onReport, onQuickProfile, onDelete, priority = false }
                       )}
                     </div>
                     <div className="flex-1 relative group">
-                      <textarea
+                      <MentionsInput
                         id="reply-input"
-                          value={replyContent}
+                        value={replyContent}
                         onChange={(e) => setReplyContent(e.target.value)}
                         placeholder="Post your reply..."
-                        className="w-full bg-transparent border-none p-0 text-[15px] text-white placeholder-[#8E909E] focus:outline-none focus:ring-0 resize-none min-h-[44px] max-h-[200px] mt-1"
-                        rows={1}
-                        onInput={(e) => {
-                          e.target.style.height = 'auto';
-                          e.target.style.height = (e.target.scrollHeight) + 'px';
+                        className="w-full min-h-[44px] mt-1"
+                        style={{
+                          control: { backgroundColor: 'transparent', fontSize: 15 },
+                          highlighter: { padding: 0 },
+                          input: { padding: 0, border: 'none', outline: 'none', color: 'white' },
+                          suggestions: {
+                            list: { backgroundColor: '#1A1B22', border: '1px solid rgba(255,255,255,0.1)', fontSize: 14, borderRadius: 8, overflow: 'hidden' },
+                            item: { padding: '8px 12px' },
+                          },
                         }}
-                      />
+                      >
+                        <Mention
+                          trigger="@"
+                          data={fetchUsers}
+                          markup="@__display__"
+                          displayTransform={(id, display) => `@${display}`}
+                          style={{ color: '#1d9bf0', backgroundColor: 'rgba(29, 155, 240, 0.1)' }}
+                        />
+                      </MentionsInput>
                       <div className="flex justify-between items-center border-t border-white/10 pt-2 mt-2 opacity-0 group-focus-within:opacity-100 transition-opacity">
                          <div className="text-xs text-[#8E909E]">
                              {replyingToId ? (

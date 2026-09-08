@@ -135,6 +135,13 @@ function SupportModal({ card, onClose }) {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   const handleSubmit = () => {
     if (!message.trim() || message.trim().length < 10) {
       alert('Please enter at least 10 characters.');
@@ -159,7 +166,7 @@ function SupportModal({ card, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
       <div 
-        className="bg-[#1A1B22] border border-white/10 rounded-3xl p-6 md:p-8 w-full max-w-lg shadow-2xl relative animate-in fade-in zoom-in-95 duration-200"
+        className="bg-[#1A1B22] border border-white/10 rounded-3xl p-6 md:p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto overscroll-contain shadow-2xl relative animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         <button 

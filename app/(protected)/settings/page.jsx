@@ -8,6 +8,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { usePushNotifications } from '../../../hooks/usePushNotifications';
 import { getCurrentHonorBadge, getNextHonorBadge } from '../../../lib/badges';
 import Link from 'next/link';
+import ImageCropper from '../../../components/ui/ImageCropper';
 
 const R2_BASE_URL = (process.env.NEXT_PUBLIC_R2_URL || 'https://pub-a45e2aa5add24ba0a8813221a09a64a9.r2.dev').replace(/\/$/, '');
 
@@ -32,7 +33,7 @@ export default function SettingsPage() {
     percentage = Math.min(100, Math.max(0, (pointsEarned / pointsNeeded) * 100));
   }
   
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(true);
   const [formData, setFormData] = useState({
     display_name: '',
     username: '',
@@ -51,6 +52,23 @@ export default function SettingsPage() {
   const [avatarFile, setAvatarFile] = useState(null);
   const [localAvatarUrl, setLocalAvatarUrl] = useState('');
   const [customAvatarUrl, setCustomAvatarUrl] = useState('');
+
+  const [cropImageUrl, setCropImageUrl] = useState('');
+  const [cropAspect, setCropAspect] = useState(1);
+  const [showCropper, setShowCropper] = useState(false);
+  const [currentCropType, setCurrentCropType] = useState('avatar'); // 'avatar' or 'cover'
+
+  const handleCropComplete = (file, previewUrl) => {
+    if (currentCropType === 'avatar') {
+      setAvatarFile(file);
+      setLocalAvatarUrl(previewUrl);
+      setCustomAvatarUrl('');
+    } else {
+      setCoverFile(file);
+      setLocalCoverUrl(previewUrl);
+    }
+    setShowCropper(false);
+  };
 
   useEffect(() => {
     if (profile) {
@@ -271,9 +289,12 @@ export default function SettingsPage() {
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    setCoverFile(file);
-                    setLocalCoverUrl(URL.createObjectURL(file));
+                    setCurrentCropType('cover');
+                    setCropAspect(21 / 9);
+                    setCropImageUrl(URL.createObjectURL(file));
+                    setShowCropper(true);
                   }
+                  e.target.value = '';
                 }} 
               />
             </div>
@@ -301,10 +322,12 @@ export default function SettingsPage() {
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      setAvatarFile(file);
-                      setLocalAvatarUrl(URL.createObjectURL(file));
-                      setCustomAvatarUrl('');
+                      setCurrentCropType('avatar');
+                      setCropAspect(1);
+                      setCropImageUrl(URL.createObjectURL(file));
+                      setShowCropper(true);
                     }
+                    e.target.value = '';
                   }} 
                 />
               </div>
@@ -517,6 +540,14 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {showCropper && (
+        <ImageCropper
+          imageUrl={cropImageUrl}
+          aspect={cropAspect}
+          onCropDone={handleCropComplete}
+          onCancel={() => setShowCropper(false)}
+        />
+      )}
     </div>
   );
 }

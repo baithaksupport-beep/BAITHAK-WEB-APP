@@ -58,7 +58,7 @@ export default function MobileMenuModal({ isOpen, onClose }) {
         </div>
 
         {/* Navigation List */}
-        <div className="px-4 py-4 space-y-1 mb-6">
+        <div className="px-4 py-4 space-y-1 mb-6 overflow-y-auto overscroll-contain max-h-[70vh]">
           {MENU_ITEMS.map((item) => {
             const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
             return (

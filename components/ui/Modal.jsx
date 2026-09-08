@@ -49,7 +49,7 @@ const Modal = ({
     >
       <div
         ref={modalRef}
-        className={`w-full ${maxWidth} glass-card p-8 md:p-10 rounded-[32px] accent-glow relative`}
+        className={`w-full ${maxWidth} max-h-[90vh] overflow-y-auto overscroll-contain glass-card p-8 md:p-10 rounded-[32px] accent-glow relative`}
       >
         {/* Close Button */}
         <button

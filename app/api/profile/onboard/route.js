@@ -36,14 +36,8 @@ export async function POST(request) {
 
     console.log('[Onboard API] Creating/updating profile for user:', user.id, 'username:', username);
 
-    const adminClient = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      { cookies: { getAll() { return []; }, setAll() {} } }
-    );
-
     // First, check if a profile already exists for this user
-    const { data: existingProfile } = await adminClient
+    const { data: existingProfile } = await supabase
       .from('profiles')
       .select('id, username')
       .eq('id', user.id)
@@ -55,16 +49,17 @@ export async function POST(request) {
       if (existingProfile.username?.startsWith('deleted_')) {
         console.log('[Onboard API] Found anonymized deleted_ profile. Wiping to bypass 15-day trigger...');
         // 1. Delete the stuck anonymized profile so we can insert a fresh one
-        await adminClient.from('profiles').delete().eq('id', user.id);
+        await supabase.from('profiles').delete().eq('id', user.id);
         
         // 2. Insert fresh profile
-        const { error: insertError } = await adminClient
+        const { error: insertError } = await supabase
           .from('profiles')
           .insert({
             id: user.id,
             username,
             display_name,
             avatar_url,
+            bio: 'Hi there, Welcome to Baithak',
             setup_completed: true
           });
         dbError = insertError;
@@ -80,7 +75,7 @@ export async function POST(request) {
           updatePayload.username = username;
         }
 
-        const { error: updateError } = await adminClient
+        const { error: updateError } = await supabase
           .from('profiles')
           .update(updatePayload)
           .eq('id', user.id);
@@ -88,13 +83,14 @@ export async function POST(request) {
       }
     } else {
       // No profile — insert a new one
-      const { error: insertError } = await adminClient
+      const { error: insertError } = await supabase
         .from('profiles')
         .insert({
           id: user.id,
           username,
           display_name,
           avatar_url,
+          bio: 'Hi there, Welcome to Baithak',
           setup_completed: true
         });
       dbError = insertError;
@@ -116,7 +112,7 @@ export async function POST(request) {
           setup_completed: true
         };
         
-        const { error: retryError } = await adminClient
+        const { error: retryError } = await supabase
           .from('profiles')
           .update(fallbackPayload)
           .eq('id', user.id);

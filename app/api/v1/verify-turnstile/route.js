@@ -8,7 +8,8 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Missing Turnstile token' }, { status: 400 });
     }
 
-    const secretKey = '0x4AAAAAAEfUxjpT5SrVUfljvxUN0tY9P5s'; // From user provided secret
+    const isDev = process.env.NODE_ENV === 'development';
+    const secretKey = process.env.TURNSTILE_SECRET_KEY || (isDev ? '1x0000000000000000000000000000000AA' : '0x4AAAAAAEfUxjpT5SrVUfljvxUN0tY9P5s'); // From user provided secret
 
     // Verify the token with Cloudflare Turnstile API
     const formData = new FormData();

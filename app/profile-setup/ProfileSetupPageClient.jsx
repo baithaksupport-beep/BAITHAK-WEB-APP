@@ -11,6 +11,7 @@ import ProtectedRoute from '../../components/ProtectedRoute';
 import Image from 'next/image';
 import Link from 'next/link';
 import Script from 'next/script';
+import ImageCropper from '../../components/ui/ImageCropper';
 
 const R2_BASE_URL = (process.env.NEXT_PUBLIC_R2_URL || 'https://pub-a45e2aa5add24ba0a8813221a09a64a9.r2.dev').replace(/\/$/, '');
 
@@ -18,77 +19,7 @@ const PRESET_AVATARS = Array.from({ length: 10 }, (_, i) =>
   `${R2_BASE_URL}/avatars/preset/avatar${i + 1}.png`
 );
 
-const SwipeToSubmit = ({ isSubmitting, disabled, onSubmit }) => {
-  const [sliderPosition, setSliderPosition] = useState(0);
-  const sliderRef = useRef(null);
-  const containerRef = useRef(null);
-  const isDragging = useRef(false);
 
-  const handleStart = (clientX) => {
-    if (disabled || isSubmitting) return;
-    isDragging.current = true;
-  };
-
-  const handleMove = (clientX) => {
-    if (!isDragging.current || !containerRef.current || !sliderRef.current) return;
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const sliderWidth = sliderRef.current.offsetWidth;
-    const maxScroll = containerRect.width - sliderWidth - 8;
-    let newX = clientX - containerRect.left - sliderWidth / 2;
-    newX = Math.max(0, Math.min(newX, maxScroll));
-    setSliderPosition(newX);
-  };
-
-  const handleEnd = () => {
-    if (!isDragging.current || !containerRef.current || !sliderRef.current) return;
-    isDragging.current = false;
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const sliderWidth = sliderRef.current.offsetWidth;
-    const maxScroll = containerRect.width - sliderWidth - 8;
-    
-    if (sliderPosition > maxScroll * 0.8) {
-      setSliderPosition(maxScroll);
-      onSubmit();
-    } else {
-      setSliderPosition(0);
-    }
-  };
-
-  useEffect(() => {
-    if (!isSubmitting && sliderPosition > 0) {
-      setSliderPosition(0);
-    }
-  }, [isSubmitting]);
-
-  return (
-    <div 
-      ref={containerRef}
-      className={`relative w-full h-12 bg-bg-dark/80 rounded-xl border border-white/10 shadow-[inset_0_2px_4px_rgba(0,0,0,0.4)] overflow-hidden select-none flex md:hidden ${disabled ? 'opacity-50' : ''}`}
-    >
-      <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-on-surface-variant/70 uppercase tracking-widest z-0 pointer-events-none">
-        {isSubmitting ? (
-           <span className="flex items-center gap-2 text-accent-yellow"><Loader2 size={14} className="animate-spin" /> Submitting...</span>
-        ) : (
-           "Slide to complete"
-        )}
-      </div>
-      <div 
-        ref={sliderRef}
-        onTouchStart={(e) => handleStart(e.touches[0].clientX)}
-        onTouchMove={(e) => handleMove(e.touches[0].clientX)}
-        onTouchEnd={handleEnd}
-        onMouseDown={(e) => handleStart(e.clientX)}
-        onMouseMove={(e) => isDragging.current && handleMove(e.clientX)}
-        onMouseUp={handleEnd}
-        onMouseLeave={handleEnd}
-        style={{ transform: `translateX(${sliderPosition}px)` }}
-        className={`absolute top-1 left-1 bottom-1 w-12 bg-accent-yellow rounded-lg flex items-center justify-center z-10 ${disabled || isSubmitting ? 'cursor-not-allowed' : 'cursor-grab'} ${!isDragging.current ? 'transition-transform duration-300' : ''}`}
-      >
-        <ArrowRight size={16} className="text-bg-dark" />
-      </div>
-    </div>
-  );
-};
 
 const ProfileSetupPageClient = ({ siteKey }) => {
   const { user, session, profile, signOut, refreshProfile } = useAuth();
@@ -98,6 +29,10 @@ const ProfileSetupPageClient = ({ siteKey }) => {
   const [customAvatarUrl, setCustomAvatarUrl] = useState('');
   const [localPreviewUrl, setLocalPreviewUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
+  
+  const [cropImageUrl, setCropImageUrl] = useState('');
+  const [cropAspect, setCropAspect] = useState(1);
+  const [showCropper, setShowCropper] = useState(false);
 
   // Status & Validation States
   const [usernameError, setUsernameError] = useState('');
@@ -153,12 +88,10 @@ const ProfileSetupPageClient = ({ siteKey }) => {
     setUsernameError(errorMsg);
   };
 
-  // Just validate and hold the file locally
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Strict validation: must be image
     if (!file.type.startsWith('image/')) {
       setUploadError('Only image files are allowed.');
       return;
@@ -169,12 +102,20 @@ const ProfileSetupPageClient = ({ siteKey }) => {
     }
 
     setUploadError('');
+    setCropAspect(1);
+    setCropImageUrl(URL.createObjectURL(file));
+    setShowCropper(true);
+    e.target.value = '';
+  };
+
+  const handleCropComplete = async (file, previewUrl) => {
+    setShowCropper(false);
     setIsSubmitting(true);
     let processedFile = file;
 
     try {
       const options = {
-        maxSizeMB: 0.5, // Avatars should be small
+        maxSizeMB: 0.5,
         maxWidthOrHeight: 800,
         initialQuality: 0.7,
         useWebWorker: true,
@@ -187,12 +128,8 @@ const ProfileSetupPageClient = ({ siteKey }) => {
     }
 
     setSelectedFile(processedFile);
-
-    // Instantly show local preview
-    const objectUrl = URL.createObjectURL(processedFile);
-    setLocalPreviewUrl(objectUrl);
+    setLocalPreviewUrl(URL.createObjectURL(processedFile));
   };
-
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -491,11 +428,11 @@ const ProfileSetupPageClient = ({ siteKey }) => {
 
               {/* ACTION BUTTON */}
               <div className="w-full pt-4 flex flex-col items-center justify-center gap-4">
-                {/* Desktop Button (Hidden on Mobile) */}
+                {/* Continue Button */}
                 <button
                   type="submit"
                   disabled={!isFormValid || isSubmitting}
-                  className="hidden md:flex w-48 bg-[#0052FF] hover:bg-[#0040DB] disabled:opacity-50 disabled:cursor-not-allowed transition-colors rounded-xl py-3 items-center justify-center gap-2 text-sm font-medium text-white shadow-lg shadow-[#0052FF]/20"
+                  className="flex w-full sm:w-48 bg-[#0052FF] hover:bg-[#0040DB] disabled:opacity-50 disabled:cursor-not-allowed transition-colors rounded-xl py-3 items-center justify-center gap-2 text-sm font-medium text-white shadow-lg shadow-[#0052FF]/20"
                 >
                   {isSubmitting ? (
                     <>
@@ -510,18 +447,6 @@ const ProfileSetupPageClient = ({ siteKey }) => {
                   )}
                 </button>
                 <div className="cf-turnstile" data-sitekey={siteKey}></div>
-
-                {/* Mobile Swipe to Submit (Hidden on Desktop) */}
-                <SwipeToSubmit 
-                  isSubmitting={isSubmitting} 
-                  disabled={!isFormValid || isSubmitting} 
-                  onSubmit={() => {
-                    const form = document.getElementById('profile-form');
-                    if (form) {
-                      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-                    }
-                  }} 
-                />
               </div>
 
             </form>
@@ -536,6 +461,14 @@ const ProfileSetupPageClient = ({ siteKey }) => {
         </div>
 
       </div>
+      {showCropper && (
+        <ImageCropper
+          imageUrl={cropImageUrl}
+          aspect={cropAspect}
+          onCropDone={handleCropComplete}
+          onCancel={() => setShowCropper(false)}
+        />
+      )}
     </ProtectedRoute>
   );
 };

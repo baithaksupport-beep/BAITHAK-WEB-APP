@@ -13,7 +13,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 
-const TABS = ['For You', 'Unanswered', 'Solved'];
+const TABS = ['For You', 'Trending', 'Unanswered', 'Solved'];
 
 // Removed inline ReportModal
 
@@ -147,29 +147,91 @@ const DashboardPageClient = ({ initialPosts = [], initialTags = ['All'] }) => {
         setLoadingMore(true);
       }
 
-      const { data, error } = await supabase.rpc('get_feed_posts', {
-        p_user_id: user?.id || null,
-        p_tab: activeTab,
-        p_tag_filter: activeTagFilter,
-        p_limit: POSTS_PER_PAGE,
-        p_offset: offset
-      });
+      let newPosts = [];
+      let formattedPosts = [];
 
-      if (error) throw error;
-      
-      const newPosts = data || [];
-      
-      // Since the RPC returns flat columns (author_username, etc), we map them to match the expected format
-      const formattedPosts = newPosts.map(p => ({
-        ...p,
-        profiles: {
-          username: p.author_username,
-          display_name: p.author_display_name,
-          avatar_url: p.author_avatar_url
-        },
-        likes: [{ count: Number(p.likes_count) }],
-        comments: [{ count: Number(p.comments_count) }]
-      }));
+      if (activeTab === 'Trending' || activeTab === 'For You') {
+        let query = supabase
+          .from('posts')
+          .select('*, profiles!posts_author_id_fkey(username, display_name, avatar_url), likes(count), comments(count)')
+          .order('created_at', { ascending: false })
+          .limit(200);
+          
+        if (activeTagFilter !== 'All') {
+          query = query.contains('tags', [activeTagFilter]);
+        }
+        
+        const { data: rawPosts, error: rawError } = await query;
+        if (rawError) throw rawError;
+        
+        let processed = rawPosts || [];
+        
+        if (activeTab === 'Trending') {
+           processed = processed.sort((a, b) => (b.likes?.[0]?.count || 0) - (a.likes?.[0]?.count || 0));
+        } else if (activeTab === 'For You') {
+           if (user) {
+              const { data: userLikes } = await supabase.from('likes').select('post_id').eq('user_id', user.id);
+              const likedPostIds = new Set(userLikes?.map(l => l.post_id) || []);
+              
+              const likedTags = new Set();
+              processed.forEach(p => {
+                if (likedPostIds.has(p.id) && p.tags) {
+                   p.tags.forEach(t => likedTags.add(t));
+                }
+              });
+              
+              processed = processed.sort((a, b) => {
+                 let aScore = 0; let bScore = 0;
+                 if (a.tags) a.tags.forEach(t => { if (likedTags.has(t)) aScore += 1; });
+                 if (b.tags) b.tags.forEach(t => { if (likedTags.has(t)) bScore += 1; });
+                 
+                 if (likedPostIds.has(a.id)) aScore += 0.5;
+                 if (likedPostIds.has(b.id)) bScore += 0.5;
+                 
+                 if (aScore === bScore) return (b.likes?.[0]?.count || 0) - (a.likes?.[0]?.count || 0);
+                 return bScore - aScore;
+              });
+           } else {
+              processed = processed.sort((a, b) => (b.likes?.[0]?.count || 0) - (a.likes?.[0]?.count || 0));
+           }
+        }
+        
+        const paged = processed.slice(offset, offset + POSTS_PER_PAGE);
+        newPosts = paged;
+        
+        formattedPosts = paged.map(p => ({
+          ...p,
+          profiles: {
+            username: p.profiles?.username,
+            display_name: p.profiles?.display_name,
+            avatar_url: p.profiles?.avatar_url
+          },
+          likes: [{ count: p.likes?.[0]?.count || 0 }],
+          comments: [{ count: p.comments?.[0]?.count || 0 }]
+        }));
+        
+      } else {
+        const { data, error } = await supabase.rpc('get_feed_posts', {
+          p_user_id: user?.id || null,
+          p_tab: activeTab,
+          p_tag_filter: activeTagFilter,
+          p_limit: POSTS_PER_PAGE,
+          p_offset: offset
+        });
+        if (error) throw error;
+        newPosts = data || [];
+        
+        formattedPosts = newPosts.map(p => ({
+          ...p,
+          profiles: {
+            username: p.author_username,
+            display_name: p.author_display_name,
+            avatar_url: p.author_avatar_url
+          },
+          likes: [{ count: Number(p.likes_count) }],
+          comments: [{ count: Number(p.comments_count) }]
+        }));
+      }
 
       if (isInitial) {
         setPosts(formattedPosts);

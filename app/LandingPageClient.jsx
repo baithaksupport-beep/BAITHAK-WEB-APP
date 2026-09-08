@@ -287,7 +287,7 @@ const LandingPageClient = () => {
           
           {/* Drawer Content */}
           <div 
-            className={`absolute top-0 right-0 h-full w-[280px] bg-surface-dark border-l border-white/10 p-8 shadow-2xl flex flex-col justify-between transition-transform duration-300 ${
+            className={`absolute top-0 right-0 h-full w-[280px] bg-surface-dark border-l border-white/10 p-8 shadow-2xl flex flex-col justify-between overflow-y-auto overscroll-contain transition-transform duration-300 ${
               mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
             }`}
           >

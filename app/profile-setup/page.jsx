@@ -10,6 +10,7 @@ export const metadata = {
 };
 
 export default function ProfileSetupPage() {
-  const siteKey = process.env.YOUR_PUBLIC_SITEKEY?.trim() || "0x4AAAAAAEfUxjs1vPVT9wmZ";
+  const isDev = process.env.NODE_ENV === 'development';
+  const siteKey = process.env.YOUR_PUBLIC_SITEKEY?.trim() || (isDev ? "1x00000000000000000000AA" : "0x4AAAAAAEfUxjs1vPVT9wmZ");
   return <ProfileSetupPageClient siteKey={siteKey} />;
 }

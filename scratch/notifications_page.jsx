@@ -168,7 +168,6 @@ export default function NotificationsPage() {
       case 'comment': return { icon: MessageSquare, color: 'text-blue-400', bg: 'bg-blue-400/10' };
       case 'like': return { icon: Heart, color: 'text-red-400', bg: 'bg-red-400/10' };
       case 'post': return { icon: Star, color: 'text-purple-400', bg: 'bg-purple-400/10' };
-      case 'mention': return { icon: MessageSquare, color: 'text-purple-400', bg: 'bg-purple-400/10' };
       case 'system': return { icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-500/10' };
         case 'connection_request': return { icon: Users, color: 'text-green-400', bg: 'bg-green-400/10' };
         case 'connection_accepted': return { icon: Users, color: 'text-blue-400', bg: 'bg-blue-400/10' };
@@ -180,14 +179,6 @@ export default function NotificationsPage() {
   const renderContent = (notification) => {
     const actorName = notification.actor?.display_name || 'Someone';
     switch(notification.type) {
-      case 'mention': 
-        return (
-          <>
-            <p className="text-sm font-medium text-white/90">
-              {actorName} <span className="font-normal text-white/60">mentioned you in a post</span> <span className="text-blue-400">{notification.post?.title}</span>
-            </p>
-          </>
-        );
       case 'post': 
         return (
           <>

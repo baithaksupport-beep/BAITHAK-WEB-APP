@@ -74,7 +74,7 @@ export default function QuickProfileModal({ userId, onClose, onReport }) {
       />
       
       {/* Modal */}
-      <div className="relative w-full max-w-[400px] bg-[#1A1B22] border border-white/10 rounded-2xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-[400px] max-h-[90vh] overflow-y-auto overscroll-contain bg-[#1A1B22] border border-white/10 rounded-2xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95 duration-200">
         
         {/* Cover Photo / Gradient Header */}
         <div className="h-32 w-full bg-gradient-to-r from-[#0033A0] via-[#8A2387] to-[#F27121] relative">

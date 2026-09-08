@@ -12,10 +12,16 @@ const ReportModal = ({ isOpen, onClose, post }) => {
 
   useEffect(() => {
     if (isOpen) {
+      document.body.style.overflow = 'hidden';
       setReportReason('');
       setDetails('');
       setIsSubmitting(false);
+    } else {
+      document.body.style.overflow = 'unset';
     }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
   }, [isOpen]);
 
   
@@ -64,7 +70,7 @@ const ReportModal = ({ isOpen, onClose, post }) => {
   
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-[#1A1B22] border border-white/10 rounded-[24px] w-full max-w-[700px] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-[#1A1B22] border border-white/10 rounded-[24px] w-full max-w-[700px] max-h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
         {/* Modal Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/5 bg-[#1C2136]/50">
@@ -83,7 +89,7 @@ const ReportModal = ({ isOpen, onClose, post }) => {
         </div>
         
         {/* Modal Body */}
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 overflow-y-auto overscroll-contain flex-1">
           <div>
             <label className="text-[12px] font-bold text-[#C4C5D5] mb-4 block uppercase tracking-wide">Why are you reporting this?</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -114,14 +120,14 @@ const ReportModal = ({ isOpen, onClose, post }) => {
         </div>
         
         {/* Modal Footer */}
-        <div className="p-5 border-t border-white/5 bg-[#1C2136]/30 flex justify-end gap-3">
-          <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-colors">
+        <div className="p-5 border-t border-white/5 bg-[#1C2136]/30 flex flex-col-reverse sm:flex-row justify-end gap-3">
+          <button onClick={onClose} className="w-full sm:w-auto px-5 py-3 sm:py-2.5 rounded-xl text-sm font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-colors">
             Cancel
           </button>
           <button 
             onClick={handleSubmit}
             disabled={!reportReason || isSubmitting}
-            className="px-6 py-2.5 rounded-xl text-[14px] font-semibold text-[#1A1B22] bg-[#FFC300] hover:bg-[#E8B82F] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md flex items-center gap-2"
+            className="w-full sm:w-auto px-6 py-3 sm:py-2.5 rounded-xl text-[14px] font-semibold text-[#1A1B22] bg-[#FFC300] hover:bg-[#E8B82F] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md flex items-center justify-center gap-2"
           >
             {isSubmitting ? 'Submitting...' : 'Submit Report'}
           </button>
