@@ -1,5 +1,6 @@
 "use client";
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -54,6 +55,44 @@ const PostCard = ({ post, onReport, onQuickProfile, onDelete, priority = false }
   const [showDoubleTapHeart, setShowDoubleTapHeart] = useState(false);
   const isLongText = post.content?.length > 250 || post.content?.split('\n').length > 4;
   
+  // Listen for realtime updates dispatched by DashboardPageClient
+  useEffect(() => {
+    const handleRealtimeLike = (e) => {
+      const { new: newRecord, old: oldRecord, eventType } = e.detail;
+      if (eventType === 'INSERT' && newRecord.post_id === post.id) {
+        // Prevent double-counting if the current user just liked it
+        if (newRecord.user_id !== user?.id) {
+          setLikesCount(prev => prev + 1);
+        }
+      } else if (eventType === 'DELETE' && oldRecord.post_id === post.id) {
+        if (oldRecord.user_id !== user?.id) {
+          setLikesCount(prev => Math.max(0, prev - 1));
+        }
+      }
+    };
+
+    const handleRealtimeComment = (e) => {
+      const { new: newRecord, old: oldRecord, eventType } = e.detail;
+      if (eventType === 'INSERT' && newRecord.post_id === post.id) {
+        if (newRecord.author_id !== user?.id) {
+          setRepliesCount(prev => prev + 1);
+        }
+      } else if (eventType === 'DELETE' && oldRecord.post_id === post.id) {
+        if (oldRecord.author_id !== user?.id) {
+          setRepliesCount(prev => Math.max(0, prev - 1));
+        }
+      }
+    };
+
+    window.addEventListener('realtime_like', handleRealtimeLike);
+    window.addEventListener('realtime_comment', handleRealtimeComment);
+
+    return () => {
+      window.removeEventListener('realtime_like', handleRealtimeLike);
+      window.removeEventListener('realtime_comment', handleRealtimeComment);
+    };
+  }, [post.id, user?.id]);
+
   // Replies State
   const [showReplies, setShowReplies] = useState(false);
   const [replies, setReplies] = useState([]);
@@ -387,6 +426,30 @@ const PostCard = ({ post, onReport, onQuickProfile, onDelete, priority = false }
         .single();
         
       if (error) throw error;
+      
+      // Extract mentions and send notifications
+      const mentions = replyContent.match(/@([a-zA-Z0-9_]+)/g);
+      if (mentions && mentions.length > 0) {
+        const uniqueUsernames = [...new Set(mentions.map(m => m.slice(1).toLowerCase()))];
+        const { data: mentionedUsers } = await supabase
+          .from('profiles')
+          .select('id')
+          .in('username', uniqueUsernames);
+          
+        if (mentionedUsers && mentionedUsers.length > 0) {
+          const notifications = mentionedUsers
+            .filter(u => u.id !== user.id)
+            .map(u => ({
+              user_id: u.id,
+              actor_id: user.id,
+              type: 'mention_comment', // mention in comment
+              post_id: post.id // link them to the post
+            }));
+          if (notifications.length > 0) {
+            await supabase.from('notifications').insert(notifications).catch(e => console.error('Mentions error:', e));
+          }
+        }
+      }
       
       setReplies(prev => [...prev, data]);
       setRepliesCount(prev => prev + 1);
@@ -789,6 +852,8 @@ const PostCard = ({ post, onReport, onQuickProfile, onDelete, priority = false }
               return <span key={i} className="text-[#1d9bf0] bg-[#1d9bf0]/10 px-1 rounded-md font-medium cursor-pointer hover:underline" onClick={(e) => { e.stopPropagation(); window.location.href = `/profile/${part.slice(1)}`; }}>{part}</span>;
             } else if (part.match(/#\w+/)) {
               return <span key={i} className="text-blue-400 font-medium">{part}</span>;
+            } else if (part.match(/@\w+/)) {
+              return <Link key={i} href={`/profile/${part}`} onClick={e => e.stopPropagation()} className="text-[#00E5FF] font-medium hover:underline">{part}</Link>;
             }
             return part;
           })}
