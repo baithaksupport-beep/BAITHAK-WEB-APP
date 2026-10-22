@@ -1,0 +1,31 @@
+name: "Feature Request"
+description: Propose a new capability or viral engagement loop for Baithak
+title: "[FEAT]: "
+labels: ["feat/viral"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What friction or user behavior in student communities does this solve?
+    validations:
+      required: true
+  - type: dropdown
+    id: theme
+    attributes:
+      label: Strategic Pillar
+      options:
+        - "Viral Features / Short-Span Engagement"
+        - "Multi-Campus / Community Architecture"
+        - "Performance / Core Web Vitals"
+        - "Monetization & AdSense Compliance"
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: List measurable conditions for this issue to be marked Done.
+      placeholder: "- [ ] User can post a quick poll\n- [ ] Results update in real time"
+    validations:
+      required: true
