@@ -1,0 +1,19 @@
+name: " Performance / Web Vitals Improvement"
+description: Optimization tasks to maintain instant page loads and pass AdSense audits
+title: "[PERF]: "
+labels: ["perf/cwv"]
+body:
+  - type: textarea
+    id: target_metric
+    attributes:
+      label: Targeted Metric
+      description: Which metric is affected? (LCP, CLS, FID/INP, Bundle Size)
+    validations:
+      required: true
+  - type: textarea
+    id: implementation_details
+    attributes:
+      label: Proposed Optimization
+      placeholder: "e.g., Dynamic import for heavy media modal to reduce initial JS payload by 40KB."
+    validations:
+      required: true
