@@ -4,9 +4,21 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 5173",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint",
+    "format": "prettier --write .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "*.{json,css,md}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.500.0",
@@ -45,7 +57,10 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",
     "autoprefixer": "^10.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
     "postcss": "^8.5.15",
+    "prettier": "^3.9.10",
     "tailwindcss": "^4.3.0"
   }
 }
